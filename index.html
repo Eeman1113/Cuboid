@@ -453,7 +453,7 @@
             // Local States
             const [cubeState, setCubeState] = useState(null);
             const [showPbBadge, setShowPbBadge] = useState(false);
-            const panelOptions = ['Solves', 'Stats', 'Scramble', 'Time Graph', 'None'];
+            const panelOptions = ['Solves', 'Stats', 'Scramble', 'Time Graph', 'Export CSV', 'None'];
 
             // Timer state: 'idle' | 'ready' (holding space) | 'running'
             const [timerState, setTimerState] = useState('idle');
@@ -472,6 +472,18 @@
             // Modal State
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [selectedBlockId, setSelectedBlockId] = useState(1);
+
+            const handleExportCSV = useCallback(() => {
+                if (solves.length === 0) return;
+                const csvContent = "data:text/csv;charset=utf-8," + "Time (ms),Penalty,Scramble\n" + solves.map(s => `${s.time},${s.penalty},"${s.scramble}"`).join("\n");
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `cuboid_solves_${new Date().toISOString().slice(0,10)}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }, [solves]);
 
             // Save to LocalStorage effects
             useEffect(() => { localStorage.setItem('cuboid-solves', JSON.stringify(solves)); }, [solves]);
@@ -546,6 +558,26 @@
                     setCubeState(getScrambledState(nextScramble));
                 }
             }, [scramble, isLocked, scrambleMode]);
+
+            const handleTouchStart = useCallback((e) => {
+                if (isModalOpen) return;
+                e.preventDefault();
+                if (timerState === 'idle') {
+                    setTimerState('ready');
+                    setTimeMs(0);
+                    setShowPbBadge(false);
+                } else if (timerState === 'running') {
+                    stopTimer();
+                }
+            }, [timerState, stopTimer, isModalOpen]);
+
+            const handleTouchEnd = useCallback((e) => {
+                if (isModalOpen) return;
+                e.preventDefault();
+                if (timerState === 'ready') {
+                    startTimer();
+                }
+            }, [timerState, startTimer, isModalOpen]);
 
             useEffect(() => {
                 if (isModalOpen) return; // Disable spacebar timer if modal is open
@@ -903,7 +935,11 @@
                             </div>
                         </div>
 
-                        <div className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight`}>
+                        <div 
+                            className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight cursor-pointer select-none`}
+                            onTouchStart={handleTouchStart}
+                            onTouchEnd={handleTouchEnd}
+                        >
                             {timerState === 'idle' && solves.length > 0 && timeMs === solves[0].time ? formatTime(solves[0].time, solves[0].penalty) : formatTime(timeMs)}
                         </div>
                     </main>
@@ -918,9 +954,13 @@
                                         options={panelOptions} 
                                         selected={panelType}
                                         onSelect={(newVal) => {
-                                            const newPanels = [...panels];
-                                            newPanels[index] = newVal;
-                                            setPanels(newPanels);
+                                            if (newVal === 'Export CSV') {
+                                                handleExportCSV();
+                                            } else {
+                                                const newPanels = [...panels];
+                                                newPanels[index] = newVal;
+                                                setPanels(newPanels);
+                                            }
                                         }} 
                                     />
                                 </div>
