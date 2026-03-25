@@ -982,7 +982,7 @@
                             >
                                 {timerState === 'idle' && solves.length > 0 && timeMs === solves[0].time ? formatTime(solves[0].time, solves[0].penalty) : formatTime(timeMs)}
                             </div>
-                            <div className="hidden md:block absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                            <div className={`${timerState !== 'idle' ? 'hidden' : ''} md:block absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none`}>
                                 Press and hold space to prime timer
                             </div>
                         </div>
