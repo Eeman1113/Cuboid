@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Cuboid - A fast, modern, and production-ready speedcubing timer.">
+    <title>Cuboid</title>
+    <!-- Favicon placeholder to prevent 404 in production -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & Babel (Standalone used for single-file deployment) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bg: '#12141c',
+                        module: '#181b25', 
+                        moduleDark: '#0c0d17',
+                        btn: '#1e242c',
+                        btnHover: '#2a323d',
+                        primary: '#246bfd',
+                        success: '#22c55e',
+                        textMain: '#ffffff',
+                    },
+                    fontFamily: {
+                        mono: ['"Roboto Mono"', 'monospace'],
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #12141c;
+            color: #ffffff;
+            margin: 0;
+            overflow-x: hidden;
+            /* Prevent text selection while interacting with timer */
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        /* Custom Scrollbar for production polish */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* Cube Map specific grid classes */
+        .cube-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            grid-template-rows: repeat(3, 1fr); 
+            gap: 8px; 
+            width: 100%; 
+            height: auto; 
+            max-width: 260px; /* Constrained to prevent scrolling */
+            margin: 0 auto;
+        }
+        .cube-face { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            grid-template-rows: repeat(3, 1fr); 
+            gap: 4px; 
+        }
+        .cube-sticker { 
+            border-radius: 4px; 
+            width: 100%; 
+            height: 100%; 
+            aspect-ratio: 1; 
+            box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Hardware-accelerated hover states */
+        .glow-blue { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
+        .glow-blue:hover, .glow-blue.active { box-shadow: 0 0 15px rgba(36, 107, 253, 0.6); }
+        .glow-green { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
+        .glow-green:hover { box-shadow: 0 0 15px rgba(34, 197, 94, 0.6); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        // --- Utils & Generators ---
+        const MOVES = ["U", "D", "L", "R", "F", "B"];
+        const MODIFIERS = ["", "'", "2"];
+
+        function generateScramble(length = 20) {
+            let scramble = [];
+            let lastMove = "";
+            let secondLastMove = "";
+
+            for (let i = 0; i < length; i++) {
+                let move;
+                do {
+                    move = MOVES[Math.floor(Math.random() * MOVES.length)];
+                } while (
+                    move === lastMove || 
+                    (move === secondLastMove && isOpposite(move, lastMove))
+                );
+
+                let modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
+                scramble.push(move + modifier);
+                
+                secondLastMove = lastMove;
+                lastMove = move;
+            }
+            return scramble.join(" ");
+        }
+
+        function isOpposite(move1, move2) {
+            const opposites = { U: "D", D: "U", L: "R", R: "L", F: "B", B: "F" };
+            return opposites[move1] === move2;
+        }
+
+        // --- Cube Simulator logic to parse notations to visual maps ---
+        function getScrambledState(scrambleStr) {
+            if (!scrambleStr) return null;
+            
+            const state = {
+                U: Array(9).fill('#ffffff'), // White
+                L: Array(9).fill('#ff9826'), // Orange
+                F: Array(9).fill('#43ff43'), // Green
+                R: Array(9).fill('#ff4343'), // Red
+                B: Array(9).fill('#246bfd'), // Blue
+                D: Array(9).fill('#ffff49')  // Yellow
+            };
+            
+            // Helper to cycle 4 elements
+            const cycle = (f1, i1, f2, i2, f3, i3, f4, i4) => {
+                let temp = state[f4][i4];
+                state[f4][i4] = state[f3][i3];
+                state[f3][i3] = state[f2][i2];
+                state[f2][i2] = state[f1][i1];
+                state[f1][i1] = temp;
+            };
+
+            const rotateFaceCW = (f) => {
+                const face = state[f];
+                const temp = [...face];
+                face[0] = temp[6]; face[1] = temp[3]; face[2] = temp[0];
+                face[3] = temp[7]; face[4] = temp[4]; face[5] = temp[1];
+                face[6] = temp[8]; face[7] = temp[5]; face[8] = temp[2];
+            };
+
+            const applyMoveCW = (move) => {
+                rotateFaceCW(move);
+                if (move === 'U') {
+                    cycle('B', 2, 'R', 2, 'F', 2, 'L', 2);
+                    cycle('B', 1, 'R', 1, 'F', 1, 'L', 1);
+                    cycle('B', 0, 'R', 0, 'F', 0, 'L', 0);
+                } else if (move === 'D') {
+                    cycle('F', 6, 'R', 6, 'B', 6, 'L', 6);
+                    cycle('F', 7, 'R', 7, 'B', 7, 'L', 7);
+                    cycle('F', 8, 'R', 8, 'B', 8, 'L', 8);
+                } else if (move === 'F') {
+                    cycle('U', 6, 'R', 0, 'D', 2, 'L', 8);
+                    cycle('U', 7, 'R', 3, 'D', 1, 'L', 5);
+                    cycle('U', 8, 'R', 6, 'D', 0, 'L', 2);
+                } else if (move === 'B') {
+                    cycle('U', 2, 'L', 0, 'D', 6, 'R', 8);
+                    cycle('U', 1, 'L', 3, 'D', 7, 'R', 5);
+                    cycle('U', 0, 'L', 6, 'D', 8, 'R', 2);
+                } else if (move === 'L') {
+                    cycle('U', 0, 'F', 0, 'D', 0, 'B', 8);
+                    cycle('U', 3, 'F', 3, 'D', 3, 'B', 5);
+                    cycle('U', 6, 'F', 6, 'D', 6, 'B', 2);
+                } else if (move === 'R') {
+                    cycle('U', 8, 'B', 0, 'D', 8, 'F', 8);
+                    cycle('U', 5, 'B', 3, 'D', 5, 'F', 5);
+                    cycle('U', 2, 'B', 6, 'D', 2, 'F', 2);
+                }
+            };
+
+            const moves = scrambleStr.split(' ');
+            for (let m of moves) {
+                if (!m) continue;
+                const face = m[0];
+                if (!state[face]) continue; // Validate face to prevent crash
+                
+                const mod = m[1];
+                let times = 1;
+                if (mod === "'") times = 3;
+                else if (mod === '2') times = 2;
+
+                for (let i = 0; i < times; i++) {
+                    applyMoveCW(face);
+                }
+            }
+            return state;
+        }
+
+
+        // --- Formatting & Stats Math ---
+        function formatTime(ms, penalty = '') {
+            if (penalty === 'DNF') return 'DNF';
+            let actualMs = ms;
+            if (penalty === '+2') actualMs += 2000;
+            if (actualMs < 0) return "0.00";
+            
+            const seconds = Math.floor(actualMs / 1000);
+            const decimals = Math.floor((actualMs % 1000) / 10);
+            let timeStr = `${seconds}.${decimals.toString().padStart(2, '0')}`;
+            if (penalty === '+2') timeStr += '+';
+            return timeStr;
+        }
+
+        function getActualTime(solve) {
+            if (solve.penalty === 'DNF') return Infinity;
+            if (solve.penalty === '+2') return solve.time + 2000;
+            return solve.time;
+        }
+
+        function calculateAverage(solves, count) {
+            if (solves.length < count) return "-";
+            const recent = solves.slice(0, count).map(getActualTime); 
+            
+            const dnfs = recent.filter(t => t === Infinity).length;
+            if (dnfs > 1) return "DNF";
+
+            recent.sort((a, b) => a - b);
+            const trimmed = recent.slice(1, -1); 
+            
+            if (trimmed.includes(Infinity)) return "DNF"; 
+
+            const sum = trimmed.reduce((acc, val) => acc + val, 0);
+            return formatTime(sum / trimmed.length);
+        }
+
+        // --- SVGs ---
+        const CaretDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"></path></svg>;
+        const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
+        const CubeIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M224,177.3V78.7a8.1,8.1,0,0,0-4.1-7l-88-49.5a7.8,7.8,0,0,0-7.8,0l-88,49.5a8.1,8.1,0,0,0-4.1,7v98.6a8.1,8.1,0,0,0,4.1,7l88,49.5a7.8,7.8,0,0,0,7.8,0l88-49.5A8.1,8.1,0,0,0,224,177.3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><polyline points="222.9 74.6 128.9 128 33.1 74.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><line x1="128.9" y1="128" x2="128" y2="234.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></line></svg>
+        );
+        const BanIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+        );
+
+        // --- Components ---
+        const Dropdown = ({ label, options, selected, onSelect }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const ref = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (ref.current && !ref.current.contains(event.target)) setIsOpen(false);
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            return (
+                <div className="relative z-20" ref={ref}>
+                    <button 
+                        onClick={() => setIsOpen(!isOpen)}
+                        className={`bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition-all glow-blue ${isOpen ? 'active' : ''}`}
+                    >
+                        {label} <CaretDown />
+                    </button>
+                    
+                    {isOpen && (
+                        <div className="absolute top-full left-0 mt-1 w-48 bg-[#181b25] border border-white/10 rounded-lg shadow-xl overflow-hidden py-1">
+                            {options.map(opt => (
+                                <button 
+                                    key={opt}
+                                    onClick={() => { onSelect(opt); setIsOpen(false); }}
+                                    className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors ${selected === opt ? 'text-white' : 'text-gray-300'}`}
+                                >
+                                    {opt}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const DEFAULT_STATS_CONFIG = [
+            { id: 1, type: 'Single', result: 'Best', label: 'pb', count: null, colSpan: 1, rowSpan: 2 },
+            { id: 2, type: 'Single', result: 'Worst', label: 'worst', count: null, colSpan: 1, rowSpan: 1 },
+            { id: 3, type: 'Average', result: 'Current', label: 'avg', count: null, colSpan: 1, rowSpan: 1 },
+            { id: 4, type: 'Average', result: 'Best', label: 'ao5 pb', count: 5, colSpan: 1, rowSpan: 1 },
+            { id: 5, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 },
+            { id: 6, type: 'Average', result: 'Best', label: 'ao12 pb', count: 12, colSpan: 1, rowSpan: 1 },
+            { id: 7, type: 'Average', result: 'Current', label: 'ao12', count: 12, colSpan: 1, rowSpan: 1 },
+        ];
+
+        // --- Main App Component ---
+        function App() {
+            // Persisted States (Safely initialized for production environments)
+            const [solves, setSolves] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('cuboid-solves');
+                    return saved ? JSON.parse(saved) : [];
+                } catch(e) { return []; }
+            });
+            const [statsConfig, setStatsConfig] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('cuboid-stats');
+                    return saved ? JSON.parse(saved) : DEFAULT_STATS_CONFIG;
+                } catch(e) { return DEFAULT_STATS_CONFIG; }
+            });
+            const [panels, setPanels] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('cuboid-panels');
+                    return saved ? JSON.parse(saved) : ['Solves', 'Stats', 'Scramble'];
+                } catch(e) { return ['Solves', 'Stats', 'Scramble']; }
+            });
+            const [scrambleMode, setScrambleMode] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('cuboid-scramble-mode');
+                    return saved !== null ? JSON.parse(saved) : true;
+                } catch(e) { return true; }
+            });
+
+            // Local States
+            const [scramble, setScramble] = useState("");
+            const [cubeState, setCubeState] = useState(null);
+            const [showPbBadge, setShowPbBadge] = useState(false);
+            const [isLocked, setIsLocked] = useState(false);
+            const panelOptions = ['Solves', 'Stats', 'Scramble', 'Time Graph', 'None'];
+
+            // Timer state: 'idle' | 'ready' (holding space) | 'running'
+            const [timerState, setTimerState] = useState('idle');
+            const [timeMs, setTimeMs] = useState(0);
+            const timerRef = useRef(null);
+            const startTimeRef = useRef(0);
+
+            // Modal State
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [selectedBlockId, setSelectedBlockId] = useState(1);
+
+            // Save to LocalStorage effects
+            useEffect(() => { localStorage.setItem('cuboid-solves', JSON.stringify(solves)); }, [solves]);
+            useEffect(() => { localStorage.setItem('cuboid-stats', JSON.stringify(statsConfig)); }, [statsConfig]);
+            useEffect(() => { localStorage.setItem('cuboid-panels', JSON.stringify(panels)); }, [panels]);
+            useEffect(() => { localStorage.setItem('cuboid-scramble-mode', JSON.stringify(scrambleMode)); }, [scrambleMode]);
+
+            // Initial Scramble logic entirely decoupled from mode toggles
+            useEffect(() => {
+                if (scrambleMode && scramble === "") {
+                    const initScramble = generateScramble();
+                    setScramble(initScramble);
+                    setCubeState(getScrambledState(initScramble));
+                }
+            }, []);
+
+            const toggleScrambleMode = useCallback(() => {
+                setScrambleMode(prev => {
+                    const nextMode = !prev;
+                    if (nextMode) {
+                        const newScramble = generateScramble();
+                        setScramble(newScramble);
+                        setCubeState(getScrambledState(newScramble));
+                    } else {
+                        setScramble("");
+                        setCubeState(null);
+                    }
+                    return nextMode;
+                });
+            }, []);
+
+            const updateTime = useCallback(() => {
+                setTimeMs(Date.now() - startTimeRef.current);
+                timerRef.current = requestAnimationFrame(updateTime);
+            }, []);
+
+            const startTimer = useCallback(() => {
+                startTimeRef.current = Date.now();
+                setTimerState('running');
+                timerRef.current = requestAnimationFrame(updateTime);
+            }, [updateTime]);
+
+            const stopTimer = useCallback(() => {
+                cancelAnimationFrame(timerRef.current);
+                setTimerState('idle');
+                const finalTime = Date.now() - startTimeRef.current;
+                setTimeMs(finalTime);
+                
+                // Add solve and check for PB
+                setSolves(prev => {
+                    const validSolves = prev.filter(s => s.penalty !== 'DNF').map(s => s.time);
+                    if (validSolves.length === 0 || finalTime < Math.min(...validSolves)) {
+                        setShowPbBadge(true);
+                    } else {
+                        setShowPbBadge(false);
+                    }
+                    return [{ id: Date.now(), time: finalTime, penalty: '', scramble: scrambleMode ? scramble : 'No Scramble' }, ...prev];
+                });
+                
+                // Advance Scramble safely if applicable
+                if (!isLocked && scrambleMode) {
+                    const nextScramble = generateScramble();
+                    setScramble(nextScramble);
+                    setCubeState(getScrambledState(nextScramble));
+                }
+            }, [scramble, isLocked, scrambleMode]);
+
+            useEffect(() => {
+                if (isModalOpen) return; // Disable spacebar timer if modal is open
+
+                const handleKeyDown = (e) => {
+                    if (e.code === 'Space') {
+                        e.preventDefault(); 
+                        if (e.repeat) return; // Ignore auto-repeat when key is held down
+
+                        if (timerState === 'idle') {
+                            setTimerState('ready');
+                            setTimeMs(0); 
+                            setShowPbBadge(false); // Hide badge when preparing for new solve
+                        } else if (timerState === 'running') {
+                            stopTimer();
+                        }
+                    }
+                };
+
+                const handleKeyUp = (e) => {
+                    if (e.code === 'Space') {
+                        e.preventDefault();
+                        if (timerState === 'ready') {
+                            startTimer();
+                        }
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                window.addEventListener('keyup', handleKeyUp);
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    window.removeEventListener('keyup', handleKeyUp);
+                };
+            }, [timerState, startTimer, stopTimer, isModalOpen]);
+
+            // Controls Handlers
+            const handleCopyScramble = () => {
+                if (!scramble) return;
+                const textarea = document.createElement('textarea');
+                textarea.value = scramble;
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                } catch (err) {
+                    console.error('Failed to copy', err);
+                }
+                document.body.removeChild(textarea);
+                
+                const btn = document.getElementById('copyBtn');
+                if (btn) {
+                    btn.style.color = '#22c55e';
+                    setTimeout(() => btn.style.color = '', 1000);
+                }
+            };
+
+            const handleNewScramble = () => {
+                const next = generateScramble();
+                setScramble(next);
+                setCubeState(getScrambledState(next));
+            };
+
+            // Solve Actions
+            const togglePenalty = useCallback((id, type) => {
+                setSolves(prev => prev.map(s => {
+                    if (s.id !== id) return s;
+                    return { ...s, penalty: s.penalty === type ? '' : type };
+                }));
+            }, []);
+
+            const deleteSolve = useCallback((id) => {
+                setSolves(prev => prev.filter(s => s.id !== id));
+            }, []);
+
+            // Calculate a single stat based on config
+            const calcStatValue = useCallback((config, allSolves) => {
+                const validTimes = allSolves.map(getActualTime).filter(t => t !== Infinity);
+                
+                // If there are solves but all are DNF, return DNF. Otherwise if 0 solves, return '-'
+                if (validTimes.length === 0) return allSolves.length > 0 ? "DNF" : "-";
+                
+                const isSingle = config.type === 'Single';
+
+                if (isSingle) {
+                    if (config.result === 'Best') {
+                        return formatTime(Math.min(...validTimes));
+                    }
+                    if (config.result === 'Worst') {
+                        return formatTime(Math.max(...validTimes));
+                    }
+                } else {
+                    if (!config.count) {
+                        const sum = validTimes.reduce((a, b) => a + b, 0);
+                        return formatTime(sum / validTimes.length);
+                    }
+                    if (config.result === 'Current') {
+                        return calculateAverage(allSolves, config.count);
+                    }
+                    if (config.result === 'Best') {
+                        let bestAvg = Infinity;
+                        for (let i = 0; i <= allSolves.length - config.count; i++) {
+                            const slice = allSolves.slice(i, i + config.count);
+                            const avgStr = calculateAverage(slice, config.count);
+                            if (avgStr !== "DNF" && avgStr !== "-") {
+                                const avgNum = parseFloat(avgStr) * 1000;
+                                if (avgNum < bestAvg) bestAvg = avgNum;
+                            }
+                        }
+                        return bestAvg === Infinity ? "-" : formatTime(bestAvg);
+                    }
+                }
+                return "-";
+            }, []);
+
+            // Layout map array (based on CSS grid order)
+            const getVisualMap = useCallback(() => {
+                if(!cubeState) return Array(12).fill(null);
+                return [
+                    null, cubeState.U, null, null,
+                    cubeState.L, cubeState.F, cubeState.R, cubeState.B,
+                    null, cubeState.D, null, null
+                ];
+            }, [cubeState]);
+
+            // Calculate Grid rows needed for Stats panel (2-column layout)
+            const totalArea = useMemo(() => statsConfig.reduce((acc, block) => acc + ((block.colSpan || 1) * (block.rowSpan || 1)), 0), [statsConfig]);
+            const statsRowsNeeded = Math.max(1, Math.ceil(totalArea / 2));
+
+            const renderPanelContent = (type, index) => {
+                switch (type) {
+                    case 'Solves':
+                        return (
+                            <div className="w-full h-full flex flex-col p-3">
+                                {solves.length === 0 ? (
+                                    <div className="text-center opacity-50 flex flex-col items-center justify-center h-full">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
+                                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                                            <path d="M12 22.08V12L3.27 6.96"></path>
+                                        </svg>
+                                        <p className="text-sm">No solves yet</p>
+                                    </div>
+                                ) : (
+                                    solves.map((s, idx) => {
+                                        const timeColor = s.penalty === 'DNF' ? 'text-gray-500 line-through' : 'text-[#22c55e]';
+                                        return (
+                                            <div key={s.id} className="flex justify-between items-center py-2 text-sm font-mono group/row px-3 hover:bg-white/5 rounded-lg transition-colors">
+                                                <div className="flex items-center gap-4 flex-1">
+                                                    <span className="text-white/40 font-bold w-6">{solves.length - idx}.</span>
+                                                    <span className={`font-bold text-[15px] ${timeColor}`}>
+                                                        {formatTime(s.time, s.penalty)}
+                                                    </span>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-3 font-bold text-xs tracking-wider">
+                                                    <button 
+                                                        onClick={() => togglePenalty(s.id, '+2')}
+                                                        className={`transition-colors ${s.penalty === '+2' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                                                        aria-label="Add +2 penalty"
+                                                    >+2</button>
+                                                    <button 
+                                                        onClick={() => togglePenalty(s.id, 'DNF')}
+                                                        className={`transition-colors ${s.penalty === 'DNF' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
+                                                        aria-label="Add DNF penalty"
+                                                    >DNF</button>
+                                                    <button 
+                                                        onClick={() => deleteSolve(s.id)} 
+                                                        className="text-gray-500 hover:text-white ml-2 flex items-center justify-center"
+                                                        aria-label="Delete solve"
+                                                    >
+                                                        <CloseIcon />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    })
+                                )}
+                            </div>
+                        );
+                    case 'Stats':
+                        return (
+                            <>
+                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-30">
+                                    <button 
+                                        onClick={() => setIsModalOpen(true)}
+                                        className="bg-success text-black text-xs font-bold px-3 py-1.5 rounded glow-green transition-all shadow-lg"
+                                        aria-label="Customize Statistics"
+                                    >
+                                        Customize Stats
+                                    </button>
+                                </div>
+                                <div className="grid gap-2 h-full w-full p-3" style={{
+                                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                                    gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))`
+                                }}>
+                                    {statsConfig.map(block => (
+                                        <div 
+                                            key={block.id} 
+                                            className="bg-white/[0.04] rounded-lg p-3 flex flex-col justify-between overflow-hidden"
+                                            style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}
+                                        >
+                                            <span className="text-[13px] font-bold text-gray-400 leading-none mb-1">{block.label}</span>
+                                            <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>
+                                                {calcStatValue(block, solves)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        );
+                    case 'Scramble':
+                        return (
+                            <div className="w-full h-full flex items-center justify-center p-3">
+                                {cubeState ? (
+                                    <div className="cube-grid aspect-[4/3]">
+                                        {getVisualMap().map((face, i) => (
+                                            <div key={i} className={face ? "cube-face" : ""}>
+                                                {face && face.map((color, j) => (
+                                                    <div key={j} className="cube-sticker" style={{ backgroundColor: color }}></div>
+                                                ))}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="opacity-30 text-sm">Scramble Disabled</div>
+                                )}
+                            </div>
+                        );
+                    case 'Time Graph':
+                        {
+                            const validGraphSolves = [...solves].reverse().map(s => getActualTime(s) === Infinity ? null : getActualTime(s)).filter(t => t !== null);
+                            
+                            if (validGraphSolves.length < 2) {
+                                return <div className="w-full h-full flex items-center justify-center opacity-50 text-sm">Need at least 2 valid solves</div>;
+                            }
+
+                            const maxT = Math.max(...validGraphSolves);
+                            const minT = Math.min(...validGraphSolves);
+                            const range = maxT - minT || 1000; 
+
+                            const points = validGraphSolves.map((t, i) => {
+                                const x = (i / (validGraphSolves.length - 1)) * 100;
+                                const y = 100 - ((t - minT) / range) * 80 - 10;
+                                return `${x},${y}`;
+                            }).join(' ');
+
+                            return (
+                                <div className="w-full h-full p-4 flex flex-col">
+                                    <div className="flex-1 w-full h-full relative">
+                                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+                                            {/* Grid Lines */}
+                                            <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
+                                            <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
+                                            <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
+                                            
+                                            {/* Line */}
+                                            <polyline points={points} fill="none" stroke="#246bfd" strokeWidth="1.5" strokeLinejoin="round" />
+                                            
+                                            {/* Data Points */}
+                                            {validGraphSolves.map((t, i) => {
+                                                const x = (i / (validGraphSolves.length - 1)) * 100;
+                                                const y = 100 - ((t - minT) / range) * 80 - 10;
+                                                return <circle key={i} cx={x} cy={y} r="1.5" fill="#ffffff" />
+                                            })}
+                                        </svg>
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-white/30 mt-2 font-mono">
+                                        <span>Older</span>
+                                        <span>Recent</span>
+                                    </div>
+                                </div>
+                            );
+                        }
+                    case 'None':
+                        return <div className="w-full h-full flex items-center justify-center opacity-30 text-sm">Empty Panel</div>;
+                    default:
+                        return null;
+                }
+            };
+
+            const timerColor = timerState === 'ready' ? 'text-green-500' : 'text-textMain';
+
+            return (
+                <div className="flex flex-col min-h-screen font-sans bg-bg overflow-x-hidden relative">
+                    
+                    {/* Header */}
+                    <header className="flex flex-wrap items-center justify-between p-4 gap-2 relative z-10">
+                        <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80">
+                            <CubeIcon /> <span>3x3</span>
+                        </div>
+                    </header>
+
+                    {/* Main Timer */}
+                    <main className="flex-1 flex flex-col items-center justify-center py-4 px-4 min-h-[35vh]">
+                        <div className="text-center w-full max-w-4xl px-2">
+                            <div className="h-8 mb-2 flex justify-center items-center">
+                                {showPbBadge && (
+                                    <span className="bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">
+                                        New 3x3 Single PB!
+                                    </span>
+                                )}
+                            </div>
+                            
+                            <div className="font-mono text-base md:text-[21px] leading-[1.6] tracking-wide text-white mb-4 sm:mb-6 min-h-[60px] flex items-end justify-center font-medium">
+                                {scrambleMode ? scramble : ""}
+                            </div>
+                            
+                            <div className={`flex gap-4 sm:gap-6 justify-center text-gray-500 mb-4 sm:mb-8 flex-wrap transition-colors`}>
+                                <button 
+                                    onClick={toggleScrambleMode} 
+                                    className={`transition-colors ${!scrambleMode ? 'text-red-500' : 'text-gray-500 hover:text-white'}`} 
+                                    title={scrambleMode ? "Turn Off Scramble" : "Turn On Scramble"}
+                                    aria-label="Toggle Scramble Mode"
+                                >
+                                    <BanIcon />
+                                </button>
+                                
+                                {scrambleMode && (
+                                    <>
+                                        <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble" aria-label="Lock Scramble">
+                                            {isLocked ? (
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
+                                            ) : (
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
+                                            )}
+                                        </button>
+                                        <button id="copyBtn" onClick={handleCopyScramble} className="hover:text-white transition-colors" title="Copy Scramble" aria-label="Copy Scramble">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="168 168 216 168 216 40 88 40 88 88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><rect x="40" y="88" width="128" height="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect></svg>
+                                        </button>
+                                        <button onClick={handleNewScramble} className="hover:text-white transition-colors" title="New Scramble" aria-label="Generate New Scramble">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="176.2 99.7 224.2 99.7 224.2 51.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><path d="M190.2,190.2a88,88,0,1,1,0-124.4l34,33.9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path></svg>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight`}>
+                            {formatTime(timeMs)}
+                        </div>
+                    </main>
+
+                    {/* Bottom Panels Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 p-4 lg:p-6 bg-transparent w-full max-w-[1400px] mx-auto mt-auto">
+                        {panels.map((panelType, index) => (
+                            <div key={index} className={`bg-module rounded-xl relative group h-[280px] flex flex-col overflow-hidden w-full shadow-lg transition-all ${panelType === 'Stats' ? 'border-2 border-[#2a323d]' : 'border border-transparent'}`}>
+                                <div className="absolute top-3 left-3 z-40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+                                    <Dropdown 
+                                        label={panelType} 
+                                        options={panelOptions} 
+                                        selected={panelType}
+                                        onSelect={(newVal) => {
+                                            const newPanels = [...panels];
+                                            newPanels[index] = newVal;
+                                            setPanels(newPanels);
+                                        }} 
+                                    />
+                                </div>
+                                <div className={`flex-1 relative ${panelType === 'Scramble' || panelType === 'Time Graph' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
+                                    {renderPanelContent(panelType, index)}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Customize Stats Modal */}
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                            <div className="bg-[#12141c] w-full max-w-3xl rounded-xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
+                                {/* Modal Header */}
+                                <div className="flex justify-between items-center p-6 border-b border-white/5">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white mb-1">Customize Stats</h2>
+                                        <p className="text-sm text-gray-400">Customize this here and now</p>
+                                    </div>
+                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white p-2">
+                                        <CloseIcon />
+                                    </button>
+                                </div>
+
+                                {/* Modal Body */}
+                                <div className="p-6 overflow-y-auto">
+                                    
+                                    {/* Mock Grid (Scaled similarly to main grid) */}
+                                    <div className="grid gap-2 h-64 w-full mb-6" style={{
+                                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                                        gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))`
+                                    }}>
+                                        {statsConfig.map(block => (
+                                            <div 
+                                                key={block.id} 
+                                                onClick={() => setSelectedBlockId(block.id)}
+                                                className={`bg-white/[0.04] rounded-lg p-2.5 flex flex-col cursor-pointer overflow-hidden transition-all border-2 ${selectedBlockId === block.id ? 'border-primary shadow-[0_0_15px_rgba(36,107,253,0.3)]' : 'border-transparent hover:bg-white/10'}`}
+                                                style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}
+                                            >
+                                                <span className="text-xs font-bold text-gray-400 leading-none mb-1">{block.label}</span>
+                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-4xl sm:text-5xl' : 'text-xl sm:text-2xl'}`}>
+                                                    {calcStatValue(block, solves)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex justify-center gap-4 mb-8 border-b border-white/5 pb-8">
+                                        <button 
+                                            onClick={() => {
+                                                const newId = Math.max(0, ...statsConfig.map(b => b.id)) + 1;
+                                                const newBlock = { id: newId, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 };
+                                                setStatsConfig([...statsConfig, newBlock]);
+                                                setSelectedBlockId(newId);
+                                            }}
+                                            className="bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-md glow-blue transition-all"
+                                        >
+                                            Add block
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (statsConfig.length <= 1) return;
+                                                const newConfig = statsConfig.filter(b => b.id !== selectedBlockId);
+                                                setStatsConfig(newConfig);
+                                                setSelectedBlockId(newConfig[0].id);
+                                            }}
+                                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-md transition-all"
+                                        >
+                                            Remove selected
+                                        </button>
+                                    </div>
+
+                                    {/* Edit Options for Selected Block */}
+                                    {statsConfig.find(b => b.id === selectedBlockId) && (() => {
+                                        const selectedBlock = statsConfig.find(b => b.id === selectedBlockId);
+                                        
+                                        const updateBlock = (updates) => {
+                                            setStatsConfig(prev => prev.map(b => {
+                                                if (b.id !== selectedBlockId) return b;
+                                                const updated = { ...b, ...updates };
+                                                // auto update label
+                                                if(updated.type === 'Single') {
+                                                    updated.label = updated.result === 'Best' ? 'pb' : 'worst';
+                                                } else {
+                                                    updated.label = `ao${updated.count || '?'}` + (updated.result === 'Best' ? ' pb' : '');
+                                                }
+                                                return updated;
+                                            }));
+                                        };
+
+                                        return (
+                                            <div className="space-y-6 max-w-md mx-auto">
+                                                <h3 className="text-lg font-bold text-center mb-2">
+                                                    {selectedBlock.result} Solve
+                                                </h3>
+
+                                                <div>
+                                                    <label className="text-sm font-semibold text-white/80 block mb-2">Stat type</label>
+                                                    <div className="flex gap-2">
+                                                        {['Single', 'Average'].map(type => (
+                                                            <button 
+                                                                key={type}
+                                                                onClick={() => updateBlock({ type, count: type==='Average'?5:null })}
+                                                                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.type === type ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+                                                            >
+                                                                {type}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-sm font-semibold text-white/80 block mb-2">Stat result</label>
+                                                    <div className="flex gap-2">
+                                                        {['Best', 'Worst', 'Current'].map(result => {
+                                                            if (selectedBlock.type === 'Single' && result === 'Current') return null;
+                                                            if (selectedBlock.type === 'Average' && result === 'Worst') return null; 
+                                                            
+                                                            return (
+                                                                <button 
+                                                                    key={result}
+                                                                    onClick={() => updateBlock({ result })}
+                                                                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.result === result ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+                                                                >
+                                                                    {result}
+                                                                </button>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                
+                                                {selectedBlock.type === 'Average' && (
+                                                    <div>
+                                                        <label className="text-sm font-semibold text-white/80 block mb-2">Count</label>
+                                                        <div className="flex gap-2">
+                                                            {[5, 12, 50, 100].map(count => (
+                                                                <button 
+                                                                    key={count}
+                                                                    onClick={() => updateBlock({ count })}
+                                                                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.count === count ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
+                                                                >
+                                                                    {count}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
