@@ -273,7 +273,7 @@
         const ArrowDownIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>;
         const RotateCwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>;
         const RotateCcwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>;
-        const NavArrowIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>;
+        const NavigationIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
 
         // --- Chart Component ---
         const TimeGraphChart = ({ solves }) => {
@@ -541,7 +541,9 @@
                 
                 // Advance Scramble safely if applicable
                 if (!isLocked && scrambleMode) {
-                    setScramble(generateScramble());
+                    const nextScramble = generateScramble();
+                    setScramble(nextScramble);
+                    setCubeState(getScrambledState(nextScramble));
                 }
             }, [scramble, isLocked, scrambleMode]);
 
@@ -805,26 +807,6 @@
                         <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80">
                             <CubeIcon /> <span>3x3</span>
                         </div>
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={toggleScrambleMode} 
-                                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm transition-colors font-medium ${scrambleMode ? 'bg-primary text-white' : 'bg-btn hover:bg-btnHover text-gray-400'}`}
-                                title="Toggle Scramble Mode"
-                            >
-                                <span>{scrambleMode ? 'Scramble: ON' : 'Scramble: OFF'}</span>
-                            </button>
-                            {scrambleMode && (
-                                <button 
-                                    onClick={() => setShowArrows(!showArrows)} 
-                                    className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm transition-colors font-medium ${showArrows ? 'bg-primary text-white' : 'bg-btn hover:bg-btnHover text-gray-400'}`}
-                                    title="Toggle Move Arrows"
-                                    aria-label="Toggle Move Arrows"
-                                >
-                                    <NavArrowIcon className="w-4 h-4" />
-                                    <span className="hidden sm:inline">{showArrows ? 'Arrows: ON' : 'Arrows: OFF'}</span>
-                                </button>
-                            )}
-                        </div>
                     </header>
 
                     {/* Main Timer */}
@@ -880,7 +862,7 @@
                                     ) : (
                                         <span>{scramble}</span>
                                     )
-                                ) : ""}
+                                ) : null}
                             </div>
                             
                             <div className={`flex gap-4 sm:gap-6 justify-center text-gray-500 mb-4 sm:mb-8 flex-wrap transition-colors`}>
@@ -895,6 +877,14 @@
                                 
                                 {scrambleMode && (
                                     <>
+                                        <button 
+                                            onClick={() => setShowArrows(!showArrows)} 
+                                            className={`transition-colors ${showArrows ? 'text-primary' : 'hover:text-white'}`}
+                                            title="Toggle Move Arrows"
+                                            aria-label="Toggle Move Arrows"
+                                        >
+                                            <NavigationIcon className="w-[18px] h-[18px]" />
+                                        </button>
                                         <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble" aria-label="Lock Scramble">
                                             {isLocked ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
@@ -972,7 +962,7 @@
                                                 style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}
                                             >
                                                 <span className="text-xs font-bold text-gray-400 leading-none mb-1">{block.label}</span>
-                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-4xl sm:text-5xl' : 'text-xl sm:text-2xl'}`}>
+                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>
                                                     {calcStatValue(block, solves)}
                                                 </div>
                                             </div>
