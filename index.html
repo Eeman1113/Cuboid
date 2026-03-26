@@ -613,7 +613,9 @@
             const [solves, setSolves] = useState(() => {
                 try {
                     const saved = localStorage.getItem('cuboid-solves');
-                    return saved ? JSON.parse(saved) : [];
+                    const parsed = saved ? JSON.parse(saved) : [];
+                    // Backfill timestamp for old solves using id (which was Date.now())
+                    return parsed.map(s => s.timestamp ? s : { ...s, timestamp: Math.floor(s.id) || 0 });
                 } catch(e) { return []; }
             });
             const [statsConfig, setStatsConfig] = useState(() => {
@@ -717,23 +719,29 @@
                         }).filter(Boolean);
                         if (importedSolves.length > 0) {
                             setSolves(prev => {
-                                // Count-based dedup
-                                const countMap = {};
-                                prev.forEach(s => {
+                                // Build count map with indices to find existing solves
+                                const indexMap = {};
+                                const updated = prev.map(s => ({ ...s }));
+                                updated.forEach((s, i) => {
                                     const key = s.time + '|' + s.penalty + '|' + s.scramble;
-                                    countMap[key] = (countMap[key] || 0) + 1;
+                                    if (!indexMap[key]) indexMap[key] = [];
+                                    indexMap[key].push(i);
                                 });
                                 const unique = [];
                                 importedSolves.forEach(s => {
                                     const key = s.time + '|' + s.penalty + '|' + s.scramble;
-                                    if ((countMap[key] || 0) > 0) {
-                                        countMap[key]--;
+                                    if (indexMap[key] && indexMap[key].length > 0) {
+                                        // Duplicate — backfill timestamp if existing is missing one
+                                        const idx = indexMap[key].shift();
+                                        if (!updated[idx].timestamp && s.timestamp) {
+                                            updated[idx].timestamp = s.timestamp;
+                                        }
                                     } else {
                                         unique.push(s);
                                     }
                                 });
                                 // Merge and sort by timestamp (newest first)
-                                const merged = [...prev, ...unique];
+                                const merged = [...updated, ...unique];
                                 merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                                 return merged;
                             });
