@@ -328,53 +328,53 @@
                 // Find best solve index
                 const bestIdx = times.indexOf(Math.min(...times));
 
-                // Format helper
-                const fmtSec = (sec) => {
+                // Seconds formatter for Y axis
+                const fmtAxis = (sec) => Math.round(sec) + 's';
+
+                // Minutes formatter for tooltip
+                const fmtMin = (sec) => {
                     const m = Math.floor(sec / 60);
-                    const s = (sec % 60).toFixed(2);
-                    return m > 0 ? `${m}:${parseFloat(s).toFixed(2).padStart(5, '0')}` : `${parseFloat(s).toFixed(2)}`;
+                    const s = sec % 60;
+                    const sFixed = s.toFixed(2);
+                    return m > 0 ? m + ':' + sFixed.padStart(5, '0') : sFixed;
                 };
 
                 if (chartInstance.current) {
                     chartInstance.current.destroy();
                 }
 
-                // --- Gradients ---
-                const solveGrad = ctx.createLinearGradient(0, 0, 0, canvas.parentElement.clientHeight || 240);
-                solveGrad.addColorStop(0, 'rgba(36, 107, 253, 0.18)');
-                solveGrad.addColorStop(0.6, 'rgba(36, 107, 253, 0.04)');
+                // --- Subtle gradient under solve line ---
+                const h = canvas.parentElement.clientHeight || 240;
+                const solveGrad = ctx.createLinearGradient(0, 0, 0, h);
+                solveGrad.addColorStop(0, 'rgba(36, 107, 253, 0.12)');
+                solveGrad.addColorStop(0.5, 'rgba(36, 107, 253, 0.03)');
                 solveGrad.addColorStop(1, 'rgba(36, 107, 253, 0)');
-
-                const bandGrad = ctx.createLinearGradient(0, 0, 0, canvas.parentElement.clientHeight || 240);
-                bandGrad.addColorStop(0, 'rgba(34, 197, 94, 0.08)');
-                bandGrad.addColorStop(0.5, 'rgba(34, 197, 94, 0.03)');
-                bandGrad.addColorStop(1, 'rgba(34, 197, 94, 0)');
 
                 // --- Crosshair plugin ---
                 const crosshairPlugin = {
                     id: 'crosshair',
                     afterDraw(chart) {
-                        const tooltip = chart.tooltip;
-                        if (!tooltip || !tooltip.getActiveElements().length) return;
-                        const x = tooltip.getActiveElements()[0].element.x;
+                        const tt = chart.tooltip;
+                        if (!tt || !tt.getActiveElements().length) return;
+                        const x = tt.getActiveElements()[0].element.x;
                         const yAxis = chart.scales.y;
-                        const ctx2 = chart.ctx;
-                        ctx2.save();
-                        ctx2.beginPath();
-                        ctx2.setLineDash([3, 4]);
-                        ctx2.moveTo(x, yAxis.top);
-                        ctx2.lineTo(x, yAxis.bottom);
-                        ctx2.lineWidth = 1;
-                        ctx2.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-                        ctx2.stroke();
-                        ctx2.restore();
+                        const c = chart.ctx;
+                        c.save();
+                        c.beginPath();
+                        c.setLineDash([3, 4]);
+                        c.moveTo(x, yAxis.top);
+                        c.lineTo(x, yAxis.bottom);
+                        c.lineWidth = 1;
+                        c.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                        c.stroke();
+                        c.restore();
                     }
                 };
 
-                // --- Point colors (highlight PB) ---
-                const pointBg = times.map((_, i) => i === bestIdx ? '#22c55e' : '#12141c');
+                // --- Point styling (PB highlighted) ---
+                const pointBg = times.map((_, i) => i === bestIdx ? '#22c55e' : '#181b25');
                 const pointBorder = times.map((_, i) => i === bestIdx ? '#22c55e' : '#246bfd');
-                const pointSize = times.map((_, i) => i === bestIdx ? 5.5 : 3.5);
+                const pointSize = times.map((_, i) => i === bestIdx ? 5 : 3);
 
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
@@ -382,7 +382,7 @@
                     data: {
                         labels: labels,
                         datasets: [
-                            // Upper band (invisible boundary)
+                            // Upper band boundary
                             {
                                 label: '_bandUpper',
                                 data: bandUpper,
@@ -394,20 +394,20 @@
                                 tension: 0.4,
                                 order: 5,
                             },
-                            // Lower band (fills to upper)
+                            // Consistency band (fills between lower → upper)
                             {
                                 label: '_bandLower',
                                 data: bandLower,
-                                borderColor: 'rgba(34, 197, 94, 0.12)',
+                                borderColor: 'rgba(34, 197, 94, 0.15)',
                                 borderWidth: 1,
-                                backgroundColor: bandGrad,
+                                backgroundColor: 'rgba(34, 197, 94, 0.06)',
                                 pointRadius: 0,
                                 pointHitRadius: 0,
                                 fill: '-1',
                                 tension: 0.4,
                                 order: 4,
                             },
-                            // Ao5 line
+                            // Ao5 trend line
                             {
                                 label: 'Ao5',
                                 data: ao5,
@@ -417,7 +417,7 @@
                                 pointRadius: 0,
                                 pointHoverRadius: 5,
                                 pointHoverBackgroundColor: '#22c55e',
-                                pointHoverBorderColor: 'rgba(34,197,94,0.3)',
+                                pointHoverBorderColor: 'rgba(34,197,94,0.25)',
                                 pointHoverBorderWidth: 6,
                                 fill: false,
                                 tension: 0.4,
@@ -425,7 +425,7 @@
                                 borderCapStyle: 'round',
                                 borderJoinStyle: 'round',
                             },
-                            // Raw solve times
+                            // Individual solve times
                             {
                                 label: 'Solve',
                                 data: times,
@@ -436,9 +436,9 @@
                                 pointBorderColor: pointBorder,
                                 pointBorderWidth: 2,
                                 pointRadius: pointSize,
-                                pointHoverRadius: 7,
+                                pointHoverRadius: 6,
                                 pointHoverBackgroundColor: '#246bfd',
-                                pointHoverBorderColor: 'rgba(36,107,253,0.3)',
+                                pointHoverBorderColor: 'rgba(36,107,253,0.25)',
                                 pointHoverBorderWidth: 8,
                                 fill: true,
                                 tension: 0.3,
@@ -452,7 +452,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         layout: {
-                            padding: { top: 8, right: 8, bottom: 0, left: 0 }
+                            padding: { top: 6, right: 6, bottom: 0, left: 0 }
                         },
                         plugins: {
                             legend: { display: false },
@@ -481,11 +481,11 @@
                                     const isPB = idx === bestIdx;
 
                                     let html = '<div style="background:rgba(12,13,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;backdrop-filter:blur(12px);min-width:130px;">';
-                                    html += '<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #' + labels[idx] + (isPB ? ' <span style="color:#22c55e;">★ PB</span>' : '') + '</div>';
-                                    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:' + (a5 !== null ? '5' : '0') + 'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">' + fmtSec(time) + '</span><span style="font-family:Inter,sans-serif;font-size:10px;color:rgba(255,255,255,0.3);">s</span></div>';
+                                    html += '<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #' + labels[idx] + (isPB ? ' <span style="color:#22c55e;">\u2605 PB</span>' : '') + '</div>';
+                                    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:' + (a5 !== null ? '5' : '0') + 'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">' + fmtMin(time) + '</span></div>';
                                     if (a5 !== null) {
                                         html += '<div style="display:flex;justify-content:space-between;gap:12px;">';
-                                        html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 ' + fmtSec(a5) + '</div>';
+                                        html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 ' + fmtMin(a5) + '</div>';
                                         if (sd !== null) {
                                             html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1' + sd.toFixed(1) + 's</div>';
                                         }
@@ -500,14 +500,11 @@
                                     const canvasRect = context.chart.canvas.getBoundingClientRect();
                                     let left = canvasRect.left + tooltip.caretX + 12;
                                     let top = canvasRect.top + tooltip.caretY - 30;
-                                    
-                                    // Keep tooltip within viewport
                                     const tipRect = tooltipEl.getBoundingClientRect();
                                     if (left + tipRect.width > window.innerWidth - 8) {
                                         left = canvasRect.left + tooltip.caretX - tipRect.width - 12;
                                     }
                                     if (top < 8) top = 8;
-
                                     tooltipEl.style.left = left + 'px';
                                     tooltipEl.style.top = top + 'px';
                                 }
@@ -534,7 +531,7 @@
                                     color: 'rgba(255, 255, 255, 0.25)', 
                                     font: { family: 'Roboto Mono', size: 10 },
                                     maxTicksLimit: 5,
-                                    callback: function(v) { return fmtSec(v); },
+                                    callback: function(v) { return fmtAxis(v); },
                                     padding: 8,
                                 },
                                 border: { display: false }
@@ -714,7 +711,12 @@
                             return null;
                         }).filter(Boolean);
                         if (importedSolves.length > 0) {
-                            setSolves(prev => [...importedSolves.reverse(), ...prev]);
+                            setSolves(prev => {
+                                // Deduplicate: skip imports that match existing time+penalty+scramble
+                                const existingKeys = new Set(prev.map(s => s.time + '|' + s.penalty + '|' + s.scramble));
+                                const unique = importedSolves.filter(s => !existingKeys.has(s.time + '|' + s.penalty + '|' + s.scramble));
+                                return [...unique, ...prev];
+                            });
                         }
                     };
                     reader.readAsText(file);
