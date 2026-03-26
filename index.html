@@ -282,7 +282,7 @@
         const RotateCcwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>;
         const NavigationIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
 
-        // --- Chart Component ---
+        // --- Chart Component (Progression + Ao5 + Consistency Band) ---
         const TimeGraphChart = ({ solves }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -290,71 +290,268 @@
             useEffect(() => {
                 if (!chartRef.current) return;
                 
-                const ctx = chartRef.current.getContext('2d');
-                const data = solves.map(s => getActualTime(s) / 1000);
-                const labels = solves.map((_, i) => `Solve ${i + 1}`);
+                const canvas = chartRef.current;
+                const ctx = canvas.getContext('2d');
+                const times = solves.map(s => getActualTime(s) / 1000);
+                const labels = solves.map((_, i) => `${i + 1}`);
+
+                // Rolling Ao5 (trim best & worst, avg middle 3)
+                const calcAo5 = (arr, idx) => {
+                    if (idx < 4) return null;
+                    const w = arr.slice(idx - 4, idx + 1);
+                    const sorted = [...w].sort((a, b) => a - b);
+                    const trimmed = sorted.slice(1, -1);
+                    return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
+                };
+
+                // Rolling Std Dev (window of 5)
+                const calcStdDev = (arr, idx) => {
+                    if (idx < 4) return null;
+                    const w = arr.slice(idx - 4, idx + 1);
+                    const mean = w.reduce((a, b) => a + b, 0) / w.length;
+                    const variance = w.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / w.length;
+                    return Math.sqrt(variance);
+                };
+
+                const ao5 = times.map((_, i) => calcAo5(times, i));
+                const bandUpper = times.map((_, i) => {
+                    const sd = calcStdDev(times, i);
+                    const a = ao5[i];
+                    return (sd !== null && a !== null) ? a + sd : null;
+                });
+                const bandLower = times.map((_, i) => {
+                    const sd = calcStdDev(times, i);
+                    const a = ao5[i];
+                    return (sd !== null && a !== null) ? a - sd : null;
+                });
+
+                // Find best solve index
+                const bestIdx = times.indexOf(Math.min(...times));
+
+                // Format helper
+                const fmtSec = (sec) => {
+                    const m = Math.floor(sec / 60);
+                    const s = (sec % 60).toFixed(2);
+                    return m > 0 ? `${m}:${parseFloat(s).toFixed(2).padStart(5, '0')}` : `${parseFloat(s).toFixed(2)}`;
+                };
 
                 if (chartInstance.current) {
                     chartInstance.current.destroy();
                 }
 
+                // --- Gradients ---
+                const solveGrad = ctx.createLinearGradient(0, 0, 0, canvas.parentElement.clientHeight || 240);
+                solveGrad.addColorStop(0, 'rgba(36, 107, 253, 0.18)');
+                solveGrad.addColorStop(0.6, 'rgba(36, 107, 253, 0.04)');
+                solveGrad.addColorStop(1, 'rgba(36, 107, 253, 0)');
+
+                const bandGrad = ctx.createLinearGradient(0, 0, 0, canvas.parentElement.clientHeight || 240);
+                bandGrad.addColorStop(0, 'rgba(34, 197, 94, 0.08)');
+                bandGrad.addColorStop(0.5, 'rgba(34, 197, 94, 0.03)');
+                bandGrad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+
+                // --- Crosshair plugin ---
+                const crosshairPlugin = {
+                    id: 'crosshair',
+                    afterDraw(chart) {
+                        const tooltip = chart.tooltip;
+                        if (!tooltip || !tooltip.getActiveElements().length) return;
+                        const x = tooltip.getActiveElements()[0].element.x;
+                        const yAxis = chart.scales.y;
+                        const ctx2 = chart.ctx;
+                        ctx2.save();
+                        ctx2.beginPath();
+                        ctx2.setLineDash([3, 4]);
+                        ctx2.moveTo(x, yAxis.top);
+                        ctx2.lineTo(x, yAxis.bottom);
+                        ctx2.lineWidth = 1;
+                        ctx2.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+                        ctx2.stroke();
+                        ctx2.restore();
+                    }
+                };
+
+                // --- Point colors (highlight PB) ---
+                const pointBg = times.map((_, i) => i === bestIdx ? '#22c55e' : '#12141c');
+                const pointBorder = times.map((_, i) => i === bestIdx ? '#22c55e' : '#246bfd');
+                const pointSize = times.map((_, i) => i === bestIdx ? 5.5 : 3.5);
+
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
+                    plugins: [crosshairPlugin],
                     data: {
                         labels: labels,
-                        datasets: [{
-                            label: 'Time',
-                            data: data,
-                            borderColor: '#246bfd',
-                            backgroundColor: 'rgba(36, 107, 253, 0.15)',
-                            borderWidth: 2,
-                            pointBackgroundColor: '#ffffff',
-                            pointBorderColor: '#246bfd',
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            fill: true,
-                            tension: 0.4
-                        }]
+                        datasets: [
+                            // Upper band (invisible boundary)
+                            {
+                                label: '_bandUpper',
+                                data: bandUpper,
+                                borderColor: 'transparent',
+                                backgroundColor: 'transparent',
+                                pointRadius: 0,
+                                pointHitRadius: 0,
+                                fill: false,
+                                tension: 0.4,
+                                order: 5,
+                            },
+                            // Lower band (fills to upper)
+                            {
+                                label: '_bandLower',
+                                data: bandLower,
+                                borderColor: 'rgba(34, 197, 94, 0.12)',
+                                borderWidth: 1,
+                                backgroundColor: bandGrad,
+                                pointRadius: 0,
+                                pointHitRadius: 0,
+                                fill: '-1',
+                                tension: 0.4,
+                                order: 4,
+                            },
+                            // Ao5 line
+                            {
+                                label: 'Ao5',
+                                data: ao5,
+                                borderColor: '#22c55e',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                pointHoverRadius: 5,
+                                pointHoverBackgroundColor: '#22c55e',
+                                pointHoverBorderColor: 'rgba(34,197,94,0.3)',
+                                pointHoverBorderWidth: 6,
+                                fill: false,
+                                tension: 0.4,
+                                order: 2,
+                                borderCapStyle: 'round',
+                                borderJoinStyle: 'round',
+                            },
+                            // Raw solve times
+                            {
+                                label: 'Solve',
+                                data: times,
+                                borderColor: '#246bfd',
+                                backgroundColor: solveGrad,
+                                borderWidth: 2,
+                                pointBackgroundColor: pointBg,
+                                pointBorderColor: pointBorder,
+                                pointBorderWidth: 2,
+                                pointRadius: pointSize,
+                                pointHoverRadius: 7,
+                                pointHoverBackgroundColor: '#246bfd',
+                                pointHoverBorderColor: 'rgba(36,107,253,0.3)',
+                                pointHoverBorderWidth: 8,
+                                fill: true,
+                                tension: 0.3,
+                                order: 1,
+                                borderCapStyle: 'round',
+                                borderJoinStyle: 'round',
+                            }
+                        ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        layout: {
+                            padding: { top: 8, right: 8, bottom: 0, left: 0 }
+                        },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
-                                backgroundColor: '#181b25',
-                                borderColor: 'rgba(255,255,255,0.1)',
-                                borderWidth: 1,
-                                titleFont: { family: 'Inter', size: 12, weight: 'normal' },
-                                titleColor: 'rgba(255,255,255,0.6)',
-                                bodyFont: { family: 'Roboto Mono', size: 14, weight: 'bold' },
-                                padding: 10,
-                                displayColors: false,
-                                callbacks: {
-                                    label: function(context) {
-                                        return context.parsed.y.toFixed(2) + 's';
+                                enabled: false,
+                                external: function(context) {
+                                    let tooltipEl = document.getElementById('chartjs-tooltip-cuboid');
+                                    if (!tooltipEl) {
+                                        tooltipEl = document.createElement('div');
+                                        tooltipEl.id = 'chartjs-tooltip-cuboid';
+                                        tooltipEl.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;transition:opacity 0.15s ease,transform 0.15s ease;opacity:0;transform:translateY(4px);';
+                                        document.body.appendChild(tooltipEl);
                                     }
+
+                                    const tooltip = context.tooltip;
+                                    if (tooltip.opacity === 0) {
+                                        tooltipEl.style.opacity = '0';
+                                        tooltipEl.style.transform = 'translateY(4px)';
+                                        return;
+                                    }
+
+                                    const idx = tooltip.dataPoints[0].dataIndex;
+                                    const time = times[idx];
+                                    const a5 = ao5[idx];
+                                    const sd = calcStdDev(times, idx);
+                                    const isPB = idx === bestIdx;
+
+                                    let html = '<div style="background:rgba(12,13,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;backdrop-filter:blur(12px);min-width:130px;">';
+                                    html += '<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #' + labels[idx] + (isPB ? ' <span style="color:#22c55e;">★ PB</span>' : '') + '</div>';
+                                    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:' + (a5 !== null ? '5' : '0') + 'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">' + fmtSec(time) + '</span><span style="font-family:Inter,sans-serif;font-size:10px;color:rgba(255,255,255,0.3);">s</span></div>';
+                                    if (a5 !== null) {
+                                        html += '<div style="display:flex;justify-content:space-between;gap:12px;">';
+                                        html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 ' + fmtSec(a5) + '</div>';
+                                        if (sd !== null) {
+                                            html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1' + sd.toFixed(1) + 's</div>';
+                                        }
+                                        html += '</div>';
+                                    }
+                                    html += '</div>';
+
+                                    tooltipEl.innerHTML = html;
+                                    tooltipEl.style.opacity = '1';
+                                    tooltipEl.style.transform = 'translateY(0)';
+
+                                    const canvasRect = context.chart.canvas.getBoundingClientRect();
+                                    let left = canvasRect.left + tooltip.caretX + 12;
+                                    let top = canvasRect.top + tooltip.caretY - 30;
+                                    
+                                    // Keep tooltip within viewport
+                                    const tipRect = tooltipEl.getBoundingClientRect();
+                                    if (left + tipRect.width > window.innerWidth - 8) {
+                                        left = canvasRect.left + tooltip.caretX - tipRect.width - 12;
+                                    }
+                                    if (top < 8) top = 8;
+
+                                    tooltipEl.style.left = left + 'px';
+                                    tooltipEl.style.top = top + 'px';
                                 }
                             }
                         },
                         scales: {
-                            x: { display: false },
+                            x: { 
+                                display: true,
+                                grid: { display: false },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.2)',
+                                    font: { family: 'Roboto Mono', size: 9 },
+                                    maxTicksLimit: 10,
+                                    padding: 4,
+                                },
+                                border: { display: false }
+                            },
                             y: {
-                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                grid: { 
+                                    color: 'rgba(255, 255, 255, 0.04)',
+                                    drawTicks: false,
+                                },
                                 ticks: { 
-                                    color: 'rgba(255, 255, 255, 0.4)', 
-                                    font: { family: 'Roboto Mono', size: 11 },
-                                    maxTicksLimit: 6
+                                    color: 'rgba(255, 255, 255, 0.25)', 
+                                    font: { family: 'Roboto Mono', size: 10 },
+                                    maxTicksLimit: 5,
+                                    callback: function(v) { return fmtSec(v); },
+                                    padding: 8,
                                 },
                                 border: { display: false }
                             }
                         },
-                        interaction: { mode: 'index', intersect: false }
+                        interaction: { mode: 'index', intersect: false },
+                        animation: {
+                            duration: 600,
+                            easing: 'easeOutQuart',
+                        }
                     }
                 });
 
                 return () => {
                     if (chartInstance.current) chartInstance.current.destroy();
+                    const tip = document.getElementById('chartjs-tooltip-cuboid');
+                    if (tip) tip.remove();
                 };
             }, [solves]);
 
@@ -857,9 +1054,27 @@
                             }
 
                             return (
-                                <div className="w-full h-full p-4 flex flex-col">
-                                    <div className="flex-1 w-full h-full relative">
+                                <div className="w-full h-full flex flex-col" style={{ padding: '12px 10px 8px' }}>
+                                    <div className="flex-1 w-full relative" style={{ minHeight: 0 }}>
                                         <TimeGraphChart solves={validGraphSolves} />
+                                    </div>
+                                    <div className="flex gap-5 justify-center pt-1.5" style={{ flexShrink: 0 }}>
+                                        <div className="flex items-center gap-1.5">
+                                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#246bfd', boxShadow: '0 0 6px rgba(36,107,253,0.5)' }}></div>
+                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Solves</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div style={{ width: 14, height: 2, borderRadius: 1, background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.4)' }}></div>
+                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Ao5</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div style={{ width: 12, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}></div>
+                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>±1σ</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}></div>
+                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>PB</span>
+                                        </div>
                                     </div>
                                 </div>
                             );
