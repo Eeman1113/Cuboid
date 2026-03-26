@@ -712,9 +712,21 @@
                         }).filter(Boolean);
                         if (importedSolves.length > 0) {
                             setSolves(prev => {
-                                // Deduplicate: skip imports that match existing time+penalty+scramble
-                                const existingKeys = new Set(prev.map(s => s.time + '|' + s.penalty + '|' + s.scramble));
-                                const unique = importedSolves.filter(s => !existingKeys.has(s.time + '|' + s.penalty + '|' + s.scramble));
+                                // Count-based dedup: only skip if import has MORE of the same solve than new
+                                const countMap = {};
+                                prev.forEach(s => {
+                                    const key = s.time + '|' + s.penalty + '|' + s.scramble;
+                                    countMap[key] = (countMap[key] || 0) + 1;
+                                });
+                                const unique = [];
+                                importedSolves.forEach(s => {
+                                    const key = s.time + '|' + s.penalty + '|' + s.scramble;
+                                    if ((countMap[key] || 0) > 0) {
+                                        countMap[key]--;
+                                    } else {
+                                        unique.push(s);
+                                    }
+                                });
                                 return [...unique, ...prev];
                             });
                         }
