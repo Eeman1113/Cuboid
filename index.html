@@ -84,6 +84,18 @@
         .glow-blue:hover, .glow-blue.active { box-shadow: 0 0 15px rgba(36, 107, 253, 0.6); }
         .glow-green { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
         .glow-green:hover { box-shadow: 0 0 15px rgba(34, 197, 94, 0.6); }
+        @keyframes pbFlash {
+            0%   { opacity: 0; transform: scale(0.85) translateY(-6px); }
+            12%  { opacity: 1; transform: scale(1.06) translateY(0); }
+            22%  { transform: scale(0.97); }
+            30%  { transform: scale(1); }
+            70%  { opacity: 1; }
+            100% { opacity: 0; transform: scale(0.95) translateY(-4px); }
+        }
+        .pb-badge {
+            animation: pbFlash 2.8s ease forwards;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -449,6 +461,14 @@
 
             const [cubeState, setCubeState] = useState(null);
             const [showPbBadge, setShowPbBadge] = useState(false);
+            const pbBadgeTimer = useRef(null);
+            useEffect(() => {
+                if (showPbBadge) {
+                    clearTimeout(pbBadgeTimer.current);
+                    pbBadgeTimer.current = setTimeout(() => setShowPbBadge(false), 2850);
+                }
+                return () => clearTimeout(pbBadgeTimer.current);
+            }, [showPbBadge]);
             const [cloudStatus, setCloudStatus] = useState('idle');
             const panelOptions = useMemo(() => ['Solves', 'Stats', 'Scramble', 'Time Graph', 'Export CSV', 'Import CSV', 'None'], []);
             const [timerState, setTimerState] = useState('idle');
@@ -892,7 +912,7 @@
                     <main className="flex-1 flex flex-col items-center justify-center py-4 px-4 min-h-[35vh]">
                         <div className="text-center w-full max-w-4xl px-2">
                             <div className="h-8 mb-2 flex justify-center items-center">
-                                {showPbBadge && <span className="bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">New 3x3 Single PB!</span>}
+                                {showPbBadge && <span key={Date.now()} className="pb-badge bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">New 3×3 Single PB!</span>}
                             </div>
                             
                             <div className="font-mono text-base md:text-[21px] leading-[1.6] tracking-wide text-white mb-4 sm:mb-6 min-h-[80px] flex items-end justify-center font-medium">
