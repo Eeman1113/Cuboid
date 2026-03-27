@@ -95,6 +95,17 @@
         // --- Google Sheets Sync ---
         const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxWYpcJ-_6Vy6rqyyEqpV9zrSEyZAfbKT8ptCS8YuFF630CZBJv3aioIW52VgFAp-Au/exec';
 
+        // Fetch all timestamps currently stored in Sheets (used before importing)
+        async function fetchSheetsTimestamps() {
+            try {
+                const res = await fetch(SHEETS_URL);
+                const json = await res.json();
+                return new Set((json.timestamps || []).map(String));
+            } catch(e) {
+                return null; // null = Sheets unreachable, caller decides what to do
+            }
+        }
+
         // --- Utils & Generators ---
         const MOVES = ["U", "D", "L", "R", "F", "B"];
         const MODIFIERS = ["", "'", "2"];
@@ -102,21 +113,15 @@
         function generateScramble(length = 20) {
             let scramble = [];
             let lastMove = "";
-            let secondLastMove = "";
 
             for (let i = 0; i < length; i++) {
                 let move;
                 do {
                     move = MOVES[Math.floor(Math.random() * MOVES.length)];
-                } while (
-                    move === lastMove ||
-                    isOpposite(move, lastMove)
-                );
+                } while (move === lastMove || isOpposite(move, lastMove));
 
                 let modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
                 scramble.push(move + modifier);
-                
-                secondLastMove = lastMove;
                 lastMove = move;
             }
             return scramble.join(" ");
@@ -189,15 +194,11 @@
                 if (!m) continue;
                 const face = m[0];
                 if (!state[face]) continue;
-                
                 const mod = m[1];
                 let times = 1;
                 if (mod === "'") times = 3;
                 else if (mod === '2') times = 2;
-
-                for (let i = 0; i < times; i++) {
-                    applyMoveCW(face);
-                }
+                for (let i = 0; i < times; i++) applyMoveCW(face);
             }
             return state;
         }
@@ -219,7 +220,6 @@
             } else {
                 timeStr = `${remainingSeconds}.${decimals.toString().padStart(2, '0')}`;
             }
-            
             if (penalty === '+2') timeStr += '+';
             return timeStr;
         }
@@ -233,15 +233,11 @@
         function calculateAverage(solves, count) {
             if (solves.length < count) return "-";
             const recent = solves.slice(0, count).map(getActualTime); 
-            
             const dnfs = recent.filter(t => t === Infinity).length;
             if (dnfs > 1) return "DNF";
-
             recent.sort((a, b) => a - b);
             const trimmed = recent.slice(1, -1); 
-            
             if (trimmed.includes(Infinity)) return "DNF"; 
-
             const sum = trimmed.reduce((acc, val) => acc + val, 0);
             return formatTime(sum / trimmed.length);
         }
@@ -350,73 +346,16 @@
                     type: 'line',
                     plugins: [crosshairPlugin],
                     data: {
-                        labels: labels,
+                        labels,
                         datasets: [
-                            {
-                                label: '_bandUpper',
-                                data: bandUpper,
-                                borderColor: 'transparent',
-                                backgroundColor: 'transparent',
-                                pointRadius: 0,
-                                pointHitRadius: 0,
-                                fill: false,
-                                tension: 0.4,
-                                order: 5,
-                            },
-                            {
-                                label: '_bandLower',
-                                data: bandLower,
-                                borderColor: 'rgba(34, 197, 94, 0.15)',
-                                borderWidth: 1,
-                                backgroundColor: 'rgba(34, 197, 94, 0.06)',
-                                pointRadius: 0,
-                                pointHitRadius: 0,
-                                fill: '-1',
-                                tension: 0.4,
-                                order: 4,
-                            },
-                            {
-                                label: 'Ao5',
-                                data: ao5,
-                                borderColor: '#22c55e',
-                                backgroundColor: 'transparent',
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                pointHoverRadius: 5,
-                                pointHoverBackgroundColor: '#22c55e',
-                                pointHoverBorderColor: 'rgba(34,197,94,0.25)',
-                                pointHoverBorderWidth: 6,
-                                fill: false,
-                                tension: 0.4,
-                                order: 2,
-                                borderCapStyle: 'round',
-                                borderJoinStyle: 'round',
-                            },
-                            {
-                                label: 'Solve',
-                                data: times,
-                                borderColor: '#246bfd',
-                                backgroundColor: solveGrad,
-                                borderWidth: 2,
-                                pointBackgroundColor: pointBg,
-                                pointBorderColor: pointBorder,
-                                pointBorderWidth: 2,
-                                pointRadius: pointSize,
-                                pointHoverRadius: 6,
-                                pointHoverBackgroundColor: '#246bfd',
-                                pointHoverBorderColor: 'rgba(36,107,253,0.25)',
-                                pointHoverBorderWidth: 8,
-                                fill: true,
-                                tension: 0.3,
-                                order: 1,
-                                borderCapStyle: 'round',
-                                borderJoinStyle: 'round',
-                            }
+                            { label: '_bandUpper', data: bandUpper, borderColor: 'transparent', backgroundColor: 'transparent', pointRadius: 0, pointHitRadius: 0, fill: false, tension: 0.4, order: 5 },
+                            { label: '_bandLower', data: bandLower, borderColor: 'rgba(34, 197, 94, 0.15)', borderWidth: 1, backgroundColor: 'rgba(34, 197, 94, 0.06)', pointRadius: 0, pointHitRadius: 0, fill: '-1', tension: 0.4, order: 4 },
+                            { label: 'Ao5', data: ao5, borderColor: '#22c55e', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#22c55e', pointHoverBorderColor: 'rgba(34,197,94,0.25)', pointHoverBorderWidth: 6, fill: false, tension: 0.4, order: 2, borderCapStyle: 'round', borderJoinStyle: 'round' },
+                            { label: 'Solve', data: times, borderColor: '#246bfd', backgroundColor: solveGrad, borderWidth: 2, pointBackgroundColor: pointBg, pointBorderColor: pointBorder, pointBorderWidth: 2, pointRadius: pointSize, pointHoverRadius: 6, pointHoverBackgroundColor: '#246bfd', pointHoverBorderColor: 'rgba(36,107,253,0.25)', pointHoverBorderWidth: 8, fill: true, tension: 0.3, order: 1, borderCapStyle: 'round', borderJoinStyle: 'round' }
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
+                        responsive: true, maintainAspectRatio: false,
                         layout: { padding: { top: 6, right: 6, bottom: 0, left: 0 } },
                         plugins: {
                             legend: { display: false },
@@ -430,44 +369,31 @@
                                         tooltipEl.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;transition:opacity 0.15s ease,transform 0.15s ease;opacity:0;transform:translateY(4px);';
                                         document.body.appendChild(tooltipEl);
                                     }
-
                                     const tooltip = context.tooltip;
-                                    if (tooltip.opacity === 0) {
-                                        tooltipEl.style.opacity = '0';
-                                        tooltipEl.style.transform = 'translateY(4px)';
-                                        return;
-                                    }
-
+                                    if (tooltip.opacity === 0) { tooltipEl.style.opacity = '0'; tooltipEl.style.transform = 'translateY(4px)'; return; }
                                     const idx = tooltip.dataPoints[0].dataIndex;
                                     const time = times[idx];
                                     const a5 = ao5[idx];
                                     const sd = calcStdDev(times, idx);
                                     const isPB = idx === bestIdx;
-
                                     let html = '<div style="background:rgba(12,13,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;backdrop-filter:blur(12px);min-width:130px;">';
                                     html += '<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #' + labels[idx] + (isPB ? ' <span style="color:#22c55e;">\u2605 PB</span>' : '') + '</div>';
                                     html += '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:' + (a5 !== null ? '5' : '0') + 'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">' + fmtMin(time) + '</span></div>';
                                     if (a5 !== null) {
                                         html += '<div style="display:flex;justify-content:space-between;gap:12px;">';
                                         html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 ' + fmtMin(a5) + '</div>';
-                                        if (sd !== null) {
-                                            html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1' + sd.toFixed(1) + 's</div>';
-                                        }
+                                        if (sd !== null) html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1' + sd.toFixed(1) + 's</div>';
                                         html += '</div>';
                                     }
                                     html += '</div>';
-
                                     tooltipEl.innerHTML = html;
                                     tooltipEl.style.opacity = '1';
                                     tooltipEl.style.transform = 'translateY(0)';
-
                                     const canvasRect = context.chart.canvas.getBoundingClientRect();
                                     let left = canvasRect.left + tooltip.caretX + 12;
                                     let top = canvasRect.top + tooltip.caretY - 30;
                                     const tipRect = tooltipEl.getBoundingClientRect();
-                                    if (left + tipRect.width > window.innerWidth - 8) {
-                                        left = canvasRect.left + tooltip.caretX - tipRect.width - 12;
-                                    }
+                                    if (left + tipRect.width > window.innerWidth - 8) left = canvasRect.left + tooltip.caretX - tipRect.width - 12;
                                     if (top < 8) top = 8;
                                     tooltipEl.style.left = left + 'px';
                                     tooltipEl.style.top = top + 'px';
@@ -475,31 +401,8 @@
                             }
                         },
                         scales: {
-                            x: { 
-                                display: true,
-                                grid: { display: false },
-                                ticks: {
-                                    color: 'rgba(255, 255, 255, 0.2)',
-                                    font: { family: 'Roboto Mono', size: 9 },
-                                    maxTicksLimit: 10,
-                                    padding: 4,
-                                },
-                                border: { display: false }
-                            },
-                            y: {
-                                grid: { 
-                                    color: 'rgba(255, 255, 255, 0.04)',
-                                    drawTicks: false,
-                                },
-                                ticks: { 
-                                    color: 'rgba(255, 255, 255, 0.25)', 
-                                    font: { family: 'Roboto Mono', size: 10 },
-                                    maxTicksLimit: 5,
-                                    callback: function(v) { return fmtAxis(v); },
-                                    padding: 8,
-                                },
-                                border: { display: false }
-                            }
+                            x: { display: true, grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.2)', font: { family: 'Roboto Mono', size: 9 }, maxTicksLimit: 10, padding: 4 }, border: { display: false } },
+                            y: { grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false }, ticks: { color: 'rgba(255,255,255,0.25)', font: { family: 'Roboto Mono', size: 10 }, maxTicksLimit: 5, callback: function(v) { return fmtAxis(v); }, padding: 8 }, border: { display: false } }
                         },
                         interaction: { mode: 'index', intersect: false },
                         animation: { duration: 600, easing: 'easeOutQuart' }
@@ -516,7 +419,7 @@
             return <canvas ref={chartRef} className="w-full h-full" />;
         };
 
-        // --- Components ---
+        // --- Dropdown ---
         const Dropdown = ({ label, options, selected, onSelect }) => {
             const [isOpen, setIsOpen] = useState(false);
             const ref = useRef(null);
@@ -533,21 +436,13 @@
 
             return (
                 <div className="relative z-[60]" ref={ref}>
-                    <button 
-                        onClick={() => setIsOpen(!isOpen)}
-                        className={`bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition-all glow-blue ${isOpen ? 'active' : ''}`}
-                    >
+                    <button onClick={() => setIsOpen(!isOpen)} className={`bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition-all glow-blue ${isOpen ? 'active' : ''}`}>
                         {label} <CaretDown />
                     </button>
-                    
                     {isOpen && (
                         <div className="absolute top-full left-0 mt-1 w-48 bg-[#181b25] border border-white/10 rounded-lg shadow-xl overflow-y-auto max-h-60 py-1 no-scrollbar z-[70]">
                             {filteredOptions.map(opt => (
-                                <button 
-                                    key={opt}
-                                    onClick={() => { onSelect(opt); setIsOpen(false); }}
-                                    className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors ${selected === opt ? 'text-white' : 'text-gray-300'}`}
-                                >
+                                <button key={opt} onClick={() => { onSelect(opt); setIsOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors ${selected === opt ? 'text-white' : 'text-gray-300'}`}>
                                     {opt}
                                 </button>
                             ))}
@@ -567,7 +462,7 @@
             { id: 7, type: 'Average', result: 'Current', label: 'ao12', count: 12, colSpan: 1, rowSpan: 1 },
         ];
 
-        // --- Main App Component ---
+        // --- Main App ---
         function App() {
             const [solves, setSolves] = useState(() => {
                 try {
@@ -577,76 +472,51 @@
                 } catch(e) { return []; }
             });
             const [statsConfig, setStatsConfig] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-stats');
-                    return saved ? JSON.parse(saved) : DEFAULT_STATS_CONFIG;
-                } catch(e) { return DEFAULT_STATS_CONFIG; }
+                try { const s = localStorage.getItem('cuboid-stats'); return s ? JSON.parse(s) : DEFAULT_STATS_CONFIG; } catch(e) { return DEFAULT_STATS_CONFIG; }
             });
             const [panels, setPanels] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-panels');
-                    return saved ? JSON.parse(saved) : ['Solves', 'Stats', 'Scramble'];
-                } catch(e) { return ['Solves', 'Stats', 'Scramble']; }
+                try { const s = localStorage.getItem('cuboid-panels'); return s ? JSON.parse(s) : ['Solves', 'Stats', 'Scramble']; } catch(e) { return ['Solves', 'Stats', 'Scramble']; }
             });
             const [scrambleMode, setScrambleMode] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-scramble-mode');
-                    return saved !== null ? JSON.parse(saved) : true;
-                } catch(e) { return true; }
+                try { const s = localStorage.getItem('cuboid-scramble-mode'); return s !== null ? JSON.parse(s) : true; } catch(e) { return true; }
             });
             const [showArrows, setShowArrows] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-show-arrows');
-                    return saved !== null ? JSON.parse(saved) : false;
-                } catch(e) { return false; }
+                try { const s = localStorage.getItem('cuboid-show-arrows'); return s !== null ? JSON.parse(s) : false; } catch(e) { return false; }
             });
             const [isLocked, setIsLocked] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-is-locked');
-                    return saved !== null ? JSON.parse(saved) : false;
-                } catch(e) { return false; }
+                try { const s = localStorage.getItem('cuboid-is-locked'); return s !== null ? JSON.parse(s) : false; } catch(e) { return false; }
             });
             const [scramble, setScramble] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-current-scramble');
-                    return saved !== null ? saved : ""; 
-                } catch(e) { return ""; }
+                try { const s = localStorage.getItem('cuboid-current-scramble'); return s !== null ? s : ""; } catch(e) { return ""; }
             });
 
-            // Local States
             const [cubeState, setCubeState] = useState(null);
             const [showPbBadge, setShowPbBadge] = useState(false);
-            // 'idle' | 'success' | 'error'
-            const [cloudStatus, setCloudStatus] = useState('idle');
+            const [cloudStatus, setCloudStatus] = useState('idle'); // 'idle' | 'success' | 'error'
             const panelOptions = ['Solves', 'Stats', 'Scramble', 'Time Graph', 'Export CSV', 'Import CSV', 'None'];
-
             const [timerState, setTimerState] = useState('idle');
-            
             const [timeMs, setTimeMs] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-solves');
-                    const parsed = saved ? JSON.parse(saved) : [];
-                    return parsed.length > 0 ? parsed[0].time : 0;
-                } catch(e) { return 0; }
+                try { const s = localStorage.getItem('cuboid-solves'); const p = s ? JSON.parse(s) : []; return p.length > 0 ? p[0].time : 0; } catch(e) { return 0; }
             });
             const timerRef = useRef(null);
             const startTimeRef = useRef(0);
-
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [selectedBlockId, setSelectedBlockId] = useState(1);
 
+            // --- Export CSV ---
             const handleExportCSV = useCallback(() => {
                 if (solves.length === 0) return;
                 const csvContent = "data:text/csv;charset=utf-8," + "Time (ms),Penalty,Scramble,Timestamp\n" + solves.map(s => `${s.time},${s.penalty},"${s.scramble}",${s.timestamp || ''}`).join("\n");
-                const encodedUri = encodeURI(csvContent);
                 const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
+                link.setAttribute("href", encodeURI(csvContent));
                 link.setAttribute("download", `cuboid_solves_${new Date().toISOString().slice(0,10)}.csv`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
             }, [solves]);
 
+            // --- Import CSV ---
+            // Checks Sheets first, only uploads timestamps missing from Sheets
             const handleImportCSV = useCallback(() => {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -655,7 +525,7 @@
                     const file = e.target.files[0];
                     if (!file) return;
                     const reader = new FileReader();
-                    reader.onload = (event) => {
+                    reader.onload = async (event) => {
                         const text = event.target.result;
                         const lines = text.split('\n').slice(1);
                         const importedSolves = lines.filter(line => line.trim()).map(line => {
@@ -666,59 +536,56 @@
                             const scramble = scrambleMatch ? scrambleMatch[1] : parts[2]?.trim() || '';
                             const lastField = parts[parts.length - 1]?.trim();
                             const timestamp = lastField && /^\d{10,}$/.test(lastField) ? parseInt(lastField) : 0;
-                            if (!isNaN(time)) {
-                                return { id: Date.now() + Math.random(), time, penalty, scramble, timestamp: timestamp || 0 };
-                            }
+                            if (!isNaN(time)) return { id: Date.now() + Math.random(), time, penalty, scramble, timestamp: timestamp || 0 };
                             return null;
                         }).filter(Boolean);
 
-                        if (importedSolves.length > 0) {
-                            // Ensure every imported solve has a unique id and timestamp
-                            importedSolves.forEach((s, i) => {
-                                if (!s.id) s.id = Date.now() + i + Math.random();
-                                if (!s.timestamp) s.timestamp = s.id;
-                            });
+                        if (importedSolves.length === 0) return;
 
-                            let solvesToPush = [];
-                            setSolves(prev => {
-                                const indexMap = {};
-                                const updated = prev.map(s => ({ ...s }));
-                                updated.forEach((s, i) => {
-                                    const key = s.time + '|' + s.penalty + '|' + s.scramble;
-                                    if (!indexMap[key]) indexMap[key] = [];
-                                    indexMap[key].push(i);
-                                });
-                                const unique = [];
-                                importedSolves.forEach(s => {
-                                    const key = s.time + '|' + s.penalty + '|' + s.scramble;
-                                    if (indexMap[key] && indexMap[key].length > 0) {
-                                        const idx = indexMap[key].shift();
-                                        if (!updated[idx].timestamp && s.timestamp) {
-                                            updated[idx].timestamp = s.timestamp;
-                                        }
-                                    } else {
-                                        unique.push(s);
-                                    }
-                                });
-                                solvesToPush = unique;
-                                const merged = [...updated, ...unique];
-                                merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                                return merged;
-                            });
+                        importedSolves.forEach((s, i) => {
+                            if (!s.id) s.id = Date.now() + i + Math.random();
+                            if (!s.timestamp) s.timestamp = s.id;
+                        });
 
-                            // Push new unique solves to Google Sheets
-                            if (solvesToPush.length > 0) {
-                                fetch(SHEETS_URL, {
-                                    method: 'POST',
-                                    body: JSON.stringify(solvesToPush),
-                                }).then(r => r.json()).then(json => {
+                        // Ask Sheets which timestamps it already has — this is the source of truth
+                        const sheetsTimestamps = await fetchSheetsTimestamps();
+                        // sheetsTimestamps === null means Sheets was unreachable
+
+                        let solvesToPush = [];
+
+                        setSolves(prev => {
+                            // Merge into local storage (dedup by timestamp)
+                            const existingLocalTs = new Set(prev.map(s => s.timestamp).filter(Boolean).map(String));
+                            const updated = prev.map(s => {
+                                if (!s.timestamp) {
+                                    const match = importedSolves.find(imp => imp.timestamp && imp.time === s.time && imp.penalty === s.penalty && imp.scramble === s.scramble);
+                                    return match ? { ...s, timestamp: match.timestamp } : s;
+                                }
+                                return s;
+                            });
+                            const uniqueLocally = importedSolves.filter(s => !s.timestamp || !existingLocalTs.has(String(s.timestamp)));
+                            const merged = [...updated, ...uniqueLocally];
+                            merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+                            if (sheetsTimestamps !== null) {
+                                // Filter against what Sheets actually has — the real dedup check
+                                solvesToPush = importedSolves.filter(s => s.timestamp && !sheetsTimestamps.has(String(s.timestamp)));
+                            } else {
+                                // Can't reach Sheets — don't push, avoid any risk of duplicates
+                                solvesToPush = [];
+                            }
+
+                            return merged;
+                        });
+
+                        if (solvesToPush.length > 0) {
+                            fetch(SHEETS_URL, { method: 'POST', body: JSON.stringify(solvesToPush) })
+                                .then(r => r.json())
+                                .then(json => {
                                     setCloudStatus(json.status === 'success' ? 'success' : 'error');
                                     setTimeout(() => setCloudStatus('idle'), 1500);
-                                }).catch(() => {
-                                    setCloudStatus('error');
-                                    setTimeout(() => setCloudStatus('idle'), 1500);
-                                });
-                            }
+                                })
+                                .catch(() => { setCloudStatus('error'); setTimeout(() => setCloudStatus('idle'), 1500); });
                         }
                     };
                     reader.readAsText(file);
@@ -726,7 +593,7 @@
                 input.click();
             }, []);
 
-            // Save to LocalStorage effects
+            // LocalStorage persistence
             useEffect(() => { localStorage.setItem('cuboid-solves', JSON.stringify(solves)); }, [solves]);
             useEffect(() => { localStorage.setItem('cuboid-stats', JSON.stringify(statsConfig)); }, [statsConfig]);
             useEffect(() => { localStorage.setItem('cuboid-panels', JSON.stringify(panels)); }, [panels]);
@@ -736,24 +603,18 @@
             useEffect(() => { localStorage.setItem('cuboid-current-scramble', scramble); }, [scramble]);
 
             useEffect(() => {
-                if (scrambleMode && scramble === "") {
-                    const initScramble = generateScramble();
-                    setScramble(initScramble);
-                }
+                if (scrambleMode && scramble === "") setScramble(generateScramble());
             }, []);
 
             useEffect(() => {
-                if (scrambleMode && scramble) {
-                    setCubeState(getScrambledState(scramble));
-                } else {
-                    setCubeState(null);
-                }
+                if (scrambleMode && scramble) setCubeState(getScrambledState(scramble));
+                else setCubeState(null);
             }, [scramble, scrambleMode]);
 
             const toggleScrambleMode = useCallback(() => {
                 if (!scrambleMode) {
-                    const nextScramble = generateScramble();
-                    setScramble(nextScramble);
+                    const next = generateScramble();
+                    setScramble(next);
                     setScrambleMode(true);
                 } else {
                     setScramble("");
@@ -772,19 +633,27 @@
                 timerRef.current = requestAnimationFrame(updateTime);
             }, [updateTime]);
 
-            // --- Google Sheets Sync ---
+            // Sync a single live solve to Sheets
             const syncToSheets = useCallback(async (solveData) => {
                 try {
-                    const res = await fetch(SHEETS_URL, {
-                        method: 'POST',
-                        body: JSON.stringify(solveData),
-                    });
+                    const res = await fetch(SHEETS_URL, { method: 'POST', body: JSON.stringify(solveData) });
                     const json = await res.json();
                     setCloudStatus(json.status === 'success' ? 'success' : 'error');
-                } catch(e) {
-                    setCloudStatus('error');
-                }
+                } catch(e) { setCloudStatus('error'); }
                 setTimeout(() => setCloudStatus('idle'), 1500);
+            }, []);
+
+            // Delete a row from Sheets by timestamp
+            const deleteFromSheets = useCallback(async (timestamp) => {
+                if (!timestamp) return;
+                try {
+                    await fetch(SHEETS_URL, {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'delete', timestamp }),
+                    });
+                } catch(e) {
+                    // Local delete still succeeds — Sheets delete is best-effort
+                }
             }, []);
 
             const stopTimer = useCallback(() => {
@@ -794,82 +663,52 @@
                 setTimeMs(finalTime);
 
                 const newSolve = { id: Date.now(), time: finalTime, penalty: '', scramble: scrambleMode ? scramble : 'No Scramble', timestamp: Date.now() };
-                
-                // Add solve and check for PB
+
                 setSolves(prev => {
                     const validSolves = prev.filter(s => s.penalty !== 'DNF').map(s => s.time);
-                    if (validSolves.length === 0 || finalTime < Math.min(...validSolves)) {
-                        setShowPbBadge(true);
-                    } else {
-                        setShowPbBadge(false);
-                    }
+                    if (validSolves.length === 0 || finalTime < Math.min(...validSolves)) setShowPbBadge(true);
+                    else setShowPbBadge(false);
                     return [newSolve, ...prev];
                 });
 
-                // Sync to Google Sheets
                 syncToSheets(newSolve);
-                
-                // Advance Scramble safely if applicable
+
                 if (!isLocked && scrambleMode) {
-                    const nextScramble = generateScramble();
-                    setScramble(nextScramble);
-                    setCubeState(getScrambledState(nextScramble));
+                    const next = generateScramble();
+                    setScramble(next);
+                    setCubeState(getScrambledState(next));
                 }
             }, [scramble, isLocked, scrambleMode, syncToSheets]);
 
             const handleTouchStart = useCallback((e) => {
                 if (isModalOpen) return;
                 e.preventDefault();
-                if (timerState === 'idle') {
-                    setTimerState('ready');
-                    setTimeMs(0);
-                    setShowPbBadge(false);
-                } else if (timerState === 'running') {
-                    stopTimer();
-                }
+                if (timerState === 'idle') { setTimerState('ready'); setTimeMs(0); setShowPbBadge(false); }
+                else if (timerState === 'running') stopTimer();
             }, [timerState, stopTimer, isModalOpen]);
 
             const handleTouchEnd = useCallback((e) => {
                 if (isModalOpen) return;
                 e.preventDefault();
-                if (timerState === 'ready') {
-                    startTimer();
-                }
+                if (timerState === 'ready') startTimer();
             }, [timerState, startTimer, isModalOpen]);
 
             useEffect(() => {
                 if (isModalOpen) return;
-
                 const handleKeyDown = (e) => {
                     if (e.code === 'Space') {
-                        e.preventDefault(); 
-                        if (e.repeat) return;
-
-                        if (timerState === 'idle') {
-                            setTimerState('ready');
-                            setTimeMs(0); 
-                            setShowPbBadge(false);
-                        } else if (timerState === 'running') {
-                            stopTimer();
-                        }
-                    }
-                };
-
-                const handleKeyUp = (e) => {
-                    if (e.code === 'Space') {
                         e.preventDefault();
-                        if (timerState === 'ready') {
-                            startTimer();
-                        }
+                        if (e.repeat) return;
+                        if (timerState === 'idle') { setTimerState('ready'); setTimeMs(0); setShowPbBadge(false); }
+                        else if (timerState === 'running') stopTimer();
                     }
                 };
-
+                const handleKeyUp = (e) => {
+                    if (e.code === 'Space') { e.preventDefault(); if (timerState === 'ready') startTimer(); }
+                };
                 window.addEventListener('keydown', handleKeyDown);
                 window.addEventListener('keyup', handleKeyUp);
-                return () => {
-                    window.removeEventListener('keydown', handleKeyDown);
-                    window.removeEventListener('keyup', handleKeyUp);
-                };
+                return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
             }, [timerState, startTimer, stopTimer, isModalOpen]);
 
             const handleCopyScramble = () => {
@@ -878,56 +717,42 @@
                 textarea.value = scramble;
                 document.body.appendChild(textarea);
                 textarea.select();
-                try {
-                    document.execCommand('copy');
-                } catch (err) {
-                    console.error('Failed to copy', err);
-                }
+                try { document.execCommand('copy'); } catch(err) {}
                 document.body.removeChild(textarea);
-                
                 const btn = document.getElementById('copyBtn');
-                if (btn) {
-                    btn.style.color = '#22c55e';
-                    setTimeout(() => btn.style.color = '', 1000);
-                }
+                if (btn) { btn.style.color = '#22c55e'; setTimeout(() => btn.style.color = '', 1000); }
             };
 
-            const handleNewScramble = () => {
-                setScramble(generateScramble());
-            };
+            const handleNewScramble = () => setScramble(generateScramble());
 
             const togglePenalty = useCallback((id, type) => {
-                setSolves(prev => prev.map(s => {
-                    if (s.id !== id) return s;
-                    return { ...s, penalty: s.penalty === type ? '' : type };
-                }));
+                setSolves(prev => prev.map(s => s.id !== id ? s : { ...s, penalty: s.penalty === type ? '' : type }));
             }, []);
 
+            // Delete from local state AND from Sheets
             const deleteSolve = useCallback((id) => {
-                setSolves(prev => prev.filter(s => s.id !== id));
-            }, []);
+                setSolves(prev => {
+                    const solve = prev.find(s => s.id === id);
+                    if (solve && solve.timestamp) {
+                        deleteFromSheets(solve.timestamp);
+                    }
+                    return prev.filter(s => s.id !== id);
+                });
+            }, [deleteFromSheets]);
 
             const calcStatValue = useCallback((config, allSolves) => {
                 const validTimes = allSolves.map(getActualTime).filter(t => t !== Infinity);
-                
                 if (validTimes.length === 0) return allSolves.length > 0 ? "DNF" : "-";
-                
-                const isSingle = config.type === 'Single';
-
-                if (isSingle) {
+                if (config.type === 'Single') {
                     if (config.result === 'Best') return formatTime(Math.min(...validTimes));
                     if (config.result === 'Worst') return formatTime(Math.max(...validTimes));
                 } else {
-                    if (!config.count) {
-                        const sum = validTimes.reduce((a, b) => a + b, 0);
-                        return formatTime(sum / validTimes.length);
-                    }
+                    if (!config.count) return formatTime(validTimes.reduce((a, b) => a + b, 0) / validTimes.length);
                     if (config.result === 'Current') return calculateAverage(allSolves, config.count);
                     if (config.result === 'Best') {
                         let bestAvg = Infinity;
                         for (let i = 0; i <= allSolves.length - config.count; i++) {
-                            const slice = allSolves.slice(i, i + config.count);
-                            const avgStr = calculateAverage(slice, config.count);
+                            const avgStr = calculateAverage(allSolves.slice(i, i + config.count), config.count);
                             if (avgStr !== "DNF" && avgStr !== "-") {
                                 const avgNum = parseFloat(avgStr) * 1000;
                                 if (avgNum < bestAvg) bestAvg = avgNum;
@@ -940,65 +765,40 @@
             }, []);
 
             const getVisualMap = useCallback(() => {
-                if(!cubeState) return Array(12).fill(null);
-                return [
-                    null, cubeState.U, null, null,
-                    cubeState.L, cubeState.F, cubeState.R, cubeState.B,
-                    null, cubeState.D, null, null
-                ];
+                if (!cubeState) return Array(12).fill(null);
+                return [null, cubeState.U, null, null, cubeState.L, cubeState.F, cubeState.R, cubeState.B, null, cubeState.D, null, null];
             }, [cubeState]);
 
             const totalArea = useMemo(() => statsConfig.reduce((acc, block) => acc + ((block.colSpan || 1) * (block.rowSpan || 1)), 0), [statsConfig]);
             const statsRowsNeeded = Math.max(1, Math.ceil(totalArea / 2));
 
-            const renderPanelContent = (type, index) => {
+            const renderPanelContent = (type) => {
                 switch (type) {
                     case 'Solves':
                         return (
                             <div className="w-full h-full flex flex-col p-3">
                                 {solves.length === 0 ? (
                                     <div className="text-center opacity-50 flex flex-col items-center justify-center h-full">
-                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2">
-                                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-                                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
-                                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                        </svg>
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                                         <p className="text-sm">No solves yet</p>
                                     </div>
                                 ) : (
                                     <div className="overflow-y-auto no-scrollbar flex-1">
-                                        {solves.map((s, idx) => {
-                                        const timeColor = s.penalty === 'DNF' ? 'text-gray-500 line-through' : 'text-[#22c55e]';
-                                        return (
+                                        {solves.map((s, idx) => (
                                             <div key={s.id} className="flex justify-between items-center py-2 text-sm font-mono group/row px-3 hover:bg-white/5 rounded-lg transition-colors">
                                                 <div className="flex items-center gap-4 flex-1">
                                                     <span className="text-white/40 font-bold w-6">{solves.length - idx}.</span>
-                                                    <span className={`font-bold text-[15px] ${timeColor}`}>
+                                                    <span className={`font-bold text-[15px] ${s.penalty === 'DNF' ? 'text-gray-500 line-through' : 'text-[#22c55e]'}`}>
                                                         {formatTime(s.time, s.penalty)}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-3 font-bold text-xs tracking-wider">
-                                                    <button 
-                                                        onClick={() => togglePenalty(s.id, '+2')}
-                                                        className={`transition-colors ${s.penalty === '+2' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                                                        aria-label="Add +2 penalty"
-                                                    >+2</button>
-                                                    <button 
-                                                        onClick={() => togglePenalty(s.id, 'DNF')}
-                                                        className={`transition-colors ${s.penalty === 'DNF' ? 'text-white' : 'text-gray-500 hover:text-white'}`}
-                                                        aria-label="Add DNF penalty"
-                                                    >DNF</button>
-                                                    <button 
-                                                        onClick={() => deleteSolve(s.id)} 
-                                                        className="text-gray-500 hover:text-white ml-2 flex items-center justify-center"
-                                                        aria-label="Delete solve"
-                                                    >
-                                                        <CloseIcon />
-                                                    </button>
+                                                    <button onClick={() => togglePenalty(s.id, '+2')} className={`transition-colors ${s.penalty === '+2' ? 'text-white' : 'text-gray-500 hover:text-white'}`} aria-label="Add +2 penalty">+2</button>
+                                                    <button onClick={() => togglePenalty(s.id, 'DNF')} className={`transition-colors ${s.penalty === 'DNF' ? 'text-white' : 'text-gray-500 hover:text-white'}`} aria-label="Add DNF penalty">DNF</button>
+                                                    <button onClick={() => deleteSolve(s.id)} className="text-gray-500 hover:text-white ml-2 flex items-center justify-center" aria-label="Delete solve"><CloseIcon /></button>
                                                 </div>
                                             </div>
-                                        )
-                                    })}
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -1007,28 +807,13 @@
                         return (
                             <>
                                 <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-30">
-                                    <button 
-                                        onClick={() => setIsModalOpen(true)}
-                                        className="bg-success text-black text-xs font-bold px-3 py-1.5 rounded glow-green transition-all shadow-lg"
-                                        aria-label="Customize Statistics"
-                                    >
-                                        Customize Stats
-                                    </button>
+                                    <button onClick={() => setIsModalOpen(true)} className="bg-success text-black text-xs font-bold px-3 py-1.5 rounded glow-green transition-all shadow-lg">Customize Stats</button>
                                 </div>
-                                <div className="grid gap-2 h-full w-full p-3" style={{
-                                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                                    gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))`
-                                }}>
+                                <div className="grid gap-2 h-full w-full p-3" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))` }}>
                                     {statsConfig.map(block => (
-                                        <div 
-                                            key={block.id} 
-                                            className="bg-white/[0.04] rounded-lg p-3 flex flex-col justify-between overflow-hidden"
-                                            style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}
-                                        >
+                                        <div key={block.id} className="bg-white/[0.04] rounded-lg p-3 flex flex-col justify-between overflow-hidden" style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}>
                                             <span className="text-[13px] font-bold text-gray-400 leading-none mb-1">{block.label}</span>
-                                            <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>
-                                                {calcStatValue(block, solves)}
-                                            </div>
+                                            <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>{calcStatValue(block, solves)}</div>
                                         </div>
                                     ))}
                                 </div>
@@ -1041,51 +826,28 @@
                                     <div className="cube-grid aspect-[4/3]">
                                         {getVisualMap().map((face, i) => (
                                             <div key={i} className={face ? "cube-face" : ""}>
-                                                {face && face.map((color, j) => (
-                                                    <div key={j} className="cube-sticker" style={{ backgroundColor: color }}></div>
-                                                ))}
+                                                {face && face.map((color, j) => <div key={j} className="cube-sticker" style={{ backgroundColor: color }}></div>)}
                                             </div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <div className="opacity-30 text-sm">Scramble Disabled</div>
-                                )}
+                                ) : <div className="opacity-30 text-sm">Scramble Disabled</div>}
                             </div>
                         );
-                    case 'Time Graph':
-                        {
-                            const validGraphSolves = [...solves].reverse().filter(s => getActualTime(s) !== Infinity);
-                            
-                            if (validGraphSolves.length < 2) {
-                                return <div className="w-full h-full flex items-center justify-center opacity-50 text-sm">Need at least 2 valid solves</div>;
-                            }
-
-                            return (
-                                <div className="w-full h-full flex flex-col" style={{ padding: '12px 10px 8px' }}>
-                                    <div className="flex-1 w-full relative" style={{ minHeight: 0 }}>
-                                        <TimeGraphChart solves={validGraphSolves} />
-                                    </div>
-                                    <div className="flex gap-5 justify-center pt-1.5" style={{ flexShrink: 0 }}>
-                                        <div className="flex items-center gap-1.5">
-                                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#246bfd', boxShadow: '0 0 6px rgba(36,107,253,0.5)' }}></div>
-                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Solves</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <div style={{ width: 14, height: 2, borderRadius: 1, background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.4)' }}></div>
-                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Ao5</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <div style={{ width: 12, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}></div>
-                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>&plusmn;1&sigma;</span>
-                                        </div>
-                                        <div className="flex items-center gap-1.5">
-                                            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}></div>
-                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>PB</span>
-                                        </div>
-                                    </div>
+                    case 'Time Graph': {
+                        const validGraphSolves = [...solves].reverse().filter(s => getActualTime(s) !== Infinity);
+                        if (validGraphSolves.length < 2) return <div className="w-full h-full flex items-center justify-center opacity-50 text-sm">Need at least 2 valid solves</div>;
+                        return (
+                            <div className="w-full h-full flex flex-col" style={{ padding: '12px 10px 8px' }}>
+                                <div className="flex-1 w-full relative" style={{ minHeight: 0 }}><TimeGraphChart solves={validGraphSolves} /></div>
+                                <div className="flex gap-5 justify-center pt-1.5" style={{ flexShrink: 0 }}>
+                                    <div className="flex items-center gap-1.5"><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#246bfd', boxShadow: '0 0 6px rgba(36,107,253,0.5)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Solves</span></div>
+                                    <div className="flex items-center gap-1.5"><div style={{ width: 14, height: 2, borderRadius: 1, background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.4)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Ao5</span></div>
+                                    <div className="flex items-center gap-1.5"><div style={{ width: 12, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>&plusmn;1&sigma;</span></div>
+                                    <div className="flex items-center gap-1.5"><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>PB</span></div>
                                 </div>
-                            );
-                        }
+                            </div>
+                        );
+                    }
                     case 'None':
                         return <div className="w-full h-full flex items-center justify-center opacity-30 text-sm">Empty Panel</div>;
                     default:
@@ -1097,23 +859,16 @@
 
             return (
                 <div className="flex flex-col min-h-screen font-sans bg-bg overflow-x-hidden relative">
-                    
-                    {/* Header */}
                     <header className="flex flex-wrap items-center justify-between p-4 gap-2 relative z-10">
                         <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80">
                             <CubeIcon /> <span>3x3</span>
                         </div>
                     </header>
 
-                    {/* Main Timer */}
                     <main className="flex-1 flex flex-col items-center justify-center py-4 px-4 min-h-[35vh]">
                         <div className="text-center w-full max-w-4xl px-2">
                             <div className="h-8 mb-2 flex justify-center items-center">
-                                {showPbBadge && (
-                                    <span className="bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">
-                                        New 3x3 Single PB!
-                                    </span>
-                                )}
+                                {showPbBadge && <span className="bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">New 3x3 Single PB!</span>}
                             </div>
                             
                             <div className="font-mono text-base md:text-[21px] leading-[1.6] tracking-wide text-white mb-4 sm:mb-6 min-h-[80px] flex items-end justify-center font-medium">
@@ -1122,11 +877,8 @@
                                         <div className="flex flex-wrap justify-center items-end gap-y-2">
                                             {scramble.split(' ').map((move, i) => {
                                                 if (!move) return null;
-                                                const base = move[0];
-                                                const mod = move[1] || '';
-                                                const isPrime = mod === "'";
-                                                const isDouble = mod === "2";
-
+                                                const base = move[0]; const mod = move[1] || '';
+                                                const isPrime = mod === "'"; const isDouble = mod === "2";
                                                 let Arrow = null;
                                                 if (base === 'U') Arrow = isPrime ? ArrowRightIcon : ArrowLeftIcon;
                                                 if (base === 'D') Arrow = isPrime ? ArrowLeftIcon : ArrowRightIcon;
@@ -1134,16 +886,11 @@
                                                 if (base === 'L') Arrow = isPrime ? ArrowUpIcon : ArrowDownIcon;
                                                 if (base === 'F') Arrow = isPrime ? RotateCcwIcon : RotateCwIcon;
                                                 if (base === 'B') Arrow = isPrime ? RotateCwIcon : RotateCcwIcon;
-
                                                 if (isDouble) {
-                                                    if (base === 'U') Arrow = ArrowLeftIcon;
-                                                    if (base === 'D') Arrow = ArrowRightIcon;
-                                                    if (base === 'R') Arrow = ArrowUpIcon;
-                                                    if (base === 'L') Arrow = ArrowDownIcon;
-                                                    if (base === 'F') Arrow = RotateCwIcon;
-                                                    if (base === 'B') Arrow = RotateCcwIcon;
+                                                    if (base === 'U') Arrow = ArrowLeftIcon; if (base === 'D') Arrow = ArrowRightIcon;
+                                                    if (base === 'R') Arrow = ArrowUpIcon; if (base === 'L') Arrow = ArrowDownIcon;
+                                                    if (base === 'F') Arrow = RotateCwIcon; if (base === 'B') Arrow = RotateCcwIcon;
                                                 }
-
                                                 return (
                                                     <div key={i} className="flex flex-col items-center mx-1 gap-1">
                                                         <span>{move}</span>
@@ -1155,66 +902,29 @@
                                                 );
                                             })}
                                         </div>
-                                    ) : (
-                                        <span>{scramble}</span>
-                                    )
+                                    ) : <span>{scramble}</span>
                                 ) : null}
                             </div>
                             
-                            <div className={`flex gap-4 sm:gap-6 justify-center text-gray-500 mb-4 sm:mb-8 flex-wrap transition-colors`}>
-                                <button 
-                                    onClick={toggleScrambleMode} 
-                                    className={`transition-colors ${!scrambleMode ? 'text-red-500' : 'hover:text-white'}`} 
-                                    title={scrambleMode ? "Turn Off Scramble" : "Turn On Scramble"}
-                                    aria-label="Toggle Scramble Mode"
-                                >
-                                    <BanIcon />
-                                </button>
-                                
+                            <div className="flex gap-4 sm:gap-6 justify-center text-gray-500 mb-4 sm:mb-8 flex-wrap transition-colors">
+                                <button onClick={toggleScrambleMode} className={`transition-colors ${!scrambleMode ? 'text-red-500' : 'hover:text-white'}`} title={scrambleMode ? "Turn Off Scramble" : "Turn On Scramble"}><BanIcon /></button>
                                 {scrambleMode && (
                                     <>
-                                        <button 
-                                            onClick={() => setShowArrows(!showArrows)} 
-                                            className={`transition-colors ${showArrows ? 'text-primary' : 'hover:text-white'}`}
-                                            title="Toggle Move Arrows"
-                                            aria-label="Toggle Move Arrows"
-                                        >
-                                            <NavigationIcon className="w-[18px] h-[18px]" />
+                                        <button onClick={() => setShowArrows(!showArrows)} className={`transition-colors ${showArrows ? 'text-primary' : 'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
+                                        <CloudIcon style={{ transition: 'color 0.2s, filter 0.2s', color: cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)', filter: cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none', pointerEvents: 'none', flexShrink: 0 }} />
+                                        <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble">
+                                            {isLocked ? <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
+                                            : <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>}
                                         </button>
-                                        <CloudIcon
-                                            title="Google Sheets Backup"
-                                            style={{
-                                                transition: 'color 0.2s, filter 0.2s',
-                                                color: cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)',
-                                                filter: cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none',
-                                                pointerEvents: 'none',
-                                                flexShrink: 0,
-                                            }}
-                                        />
-                                        <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble" aria-label="Lock Scramble">
-                                            {isLocked ? (
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
-                                            ) : (
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
-                                            )}
-                                        </button>
-                                        <button id="copyBtn" onClick={handleCopyScramble} className="hover:text-white transition-colors" title="Copy Scramble" aria-label="Copy Scramble">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="168 168 216 168 216 40 88 40 88 88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><rect x="40" y="88" width="128" height="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect></svg>
-                                        </button>
-                                        <button onClick={handleNewScramble} className="hover:text-white transition-colors" title="New Scramble" aria-label="Generate New Scramble">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="176.2 99.7 224.2 99.7 224.2 51.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><path d="M190.2,190.2a88,88,0,1,1,0-124.4l34,33.9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path></svg>
-                                        </button>
+                                        <button id="copyBtn" onClick={handleCopyScramble} className="hover:text-white transition-colors" title="Copy Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="168 168 216 168 216 40 88 40 88 88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><rect x="40" y="88" width="128" height="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect></svg></button>
+                                        <button onClick={handleNewScramble} className="hover:text-white transition-colors" title="New Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="176.2 99.7 224.2 99.7 224.2 51.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><path d="M190.2,190.2a88,88,0,1,1,0-124.4l34,33.9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path></svg></button>
                                     </>
                                 )}
                             </div>
                         </div>
 
                         <div className="relative group">
-                            <div 
-                                className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight cursor-pointer select-none`}
-                                onTouchStart={handleTouchStart}
-                                onTouchEnd={handleTouchEnd}
-                            >
+                            <div className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight cursor-pointer select-none`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                                 {timerState === 'idle' && solves.length > 0 && timeMs === solves[0].time ? formatTime(solves[0].time, solves[0].penalty) : formatTime(timeMs)}
                             </div>
                             {timerState === 'idle' && (
@@ -1225,36 +935,21 @@
                         </div>
                     </main>
 
-                    {/* Bottom Panels Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 p-4 lg:p-6 bg-transparent w-full max-w-[1400px] mx-auto mt-auto">
                         {panels.map((panelType, index) => (
                             <div key={index} className={`bg-module rounded-xl relative group h-[280px] flex flex-col w-full shadow-lg transition-all ${panelType === 'Stats' ? 'border-2 border-[#2a323d]' : 'border border-transparent'}`}>
                                 <div className="absolute top-3 left-3 z-40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
-                                    <Dropdown 
-                                        label={panelType} 
-                                        options={panelOptions} 
-                                        selected={panelType}
-                                        onSelect={(newVal) => {
-                                            if (newVal === 'Export CSV') {
-                                                handleExportCSV();
-                                            } else if (newVal === 'Import CSV') {
-                                                handleImportCSV();
-                                            } else {
-                                                const newPanels = [...panels];
-                                                newPanels[index] = newVal;
-                                                setPanels(newPanels);
-                                            }
-                                        }} 
-                                    />
+                                    <Dropdown label={panelType} options={panelOptions} selected={panelType} onSelect={(newVal) => {
+                                        if (newVal === 'Export CSV') handleExportCSV();
+                                        else if (newVal === 'Import CSV') handleImportCSV();
+                                        else { const p = [...panels]; p[index] = newVal; setPanels(p); }
+                                    }} />
                                 </div>
-                                <div className="flex-1 relative overflow-hidden">
-                                    {renderPanelContent(panelType, index)}
-                                </div>
+                                <div className="flex-1 relative overflow-hidden">{renderPanelContent(panelType, index)}</div>
                             </div>
                         ))}
                     </div>
 
-                    {/* Customize Stats Modal */}
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                             <div className="bg-[#12141c] w-full max-w-3xl rounded-xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
@@ -1263,125 +958,58 @@
                                         <h2 className="text-2xl font-bold text-white mb-1">Customize Stats</h2>
                                         <p className="text-sm text-gray-400">Customize this here and now</p>
                                     </div>
-                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white p-2">
-                                        <CloseIcon />
-                                    </button>
+                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white p-2"><CloseIcon /></button>
                                 </div>
-
                                 <div className="p-6 overflow-y-auto">
-                                    <div className="grid gap-2 h-64 w-full mb-6" style={{
-                                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                                        gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))`
-                                    }}>
+                                    <div className="grid gap-2 h-64 w-full mb-6" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))` }}>
                                         {statsConfig.map(block => (
-                                            <div 
-                                                key={block.id} 
-                                                onClick={() => setSelectedBlockId(block.id)}
-                                                className={`bg-white/[0.04] rounded-lg p-2.5 flex flex-col cursor-pointer overflow-hidden transition-all border-2 ${selectedBlockId === block.id ? 'border-primary shadow-[0_0_15px_rgba(36,107,253,0.3)]' : 'border-transparent hover:bg-white/10'}`}
-                                                style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}
-                                            >
+                                            <div key={block.id} onClick={() => setSelectedBlockId(block.id)} className={`bg-white/[0.04] rounded-lg p-2.5 flex flex-col cursor-pointer overflow-hidden transition-all border-2 ${selectedBlockId === block.id ? 'border-primary shadow-[0_0_15px_rgba(36,107,253,0.3)]' : 'border-transparent hover:bg-white/10'}`} style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}>
                                                 <span className="text-xs font-bold text-gray-400 leading-none mb-1">{block.label}</span>
-                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>
-                                                    {calcStatValue(block, solves)}
-                                                </div>
+                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>{calcStatValue(block, solves)}</div>
                                             </div>
                                         ))}
                                     </div>
-
                                     <div className="flex justify-center gap-4 mb-8 border-b border-white/5 pb-8">
-                                        <button 
-                                            onClick={() => {
-                                                const newId = Math.max(0, ...statsConfig.map(b => b.id)) + 1;
-                                                const newBlock = { id: newId, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 };
-                                                setStatsConfig([...statsConfig, newBlock]);
-                                                setSelectedBlockId(newId);
-                                            }}
-                                            className="bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-md glow-blue transition-all"
-                                        >
-                                            Add block
-                                        </button>
-                                        <button 
-                                            onClick={() => {
-                                                if (statsConfig.length <= 1) return;
-                                                const newConfig = statsConfig.filter(b => b.id !== selectedBlockId);
-                                                setStatsConfig(newConfig);
-                                                setSelectedBlockId(newConfig[0].id);
-                                            }}
-                                            className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-md transition-all"
-                                        >
-                                            Remove selected
-                                        </button>
+                                        <button onClick={() => { const newId = Math.max(0, ...statsConfig.map(b => b.id)) + 1; const nb = { id: newId, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 }; setStatsConfig([...statsConfig, nb]); setSelectedBlockId(newId); }} className="bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-md glow-blue transition-all">Add block</button>
+                                        <button onClick={() => { if (statsConfig.length <= 1) return; const nc = statsConfig.filter(b => b.id !== selectedBlockId); setStatsConfig(nc); setSelectedBlockId(nc[0].id); }} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-md transition-all">Remove selected</button>
                                     </div>
-
                                     {statsConfig.find(b => b.id === selectedBlockId) && (() => {
                                         const selectedBlock = statsConfig.find(b => b.id === selectedBlockId);
-                                        
                                         const updateBlock = (updates) => {
                                             setStatsConfig(prev => prev.map(b => {
                                                 if (b.id !== selectedBlockId) return b;
-                                                const updated = { ...b, ...updates };
-                                                if(updated.type === 'Single') {
-                                                    updated.label = updated.result === 'Best' ? 'pb' : 'worst';
-                                                } else {
-                                                    updated.label = `ao${updated.count || '?'}` + (updated.result === 'Best' ? ' pb' : '');
-                                                }
-                                                return updated;
+                                                const u = { ...b, ...updates };
+                                                u.label = u.type === 'Single' ? (u.result === 'Best' ? 'pb' : 'worst') : `ao${u.count || '?'}` + (u.result === 'Best' ? ' pb' : '');
+                                                return u;
                                             }));
                                         };
-
                                         return (
                                             <div className="space-y-6 max-w-md mx-auto">
-                                                <h3 className="text-lg font-bold text-center mb-2">
-                                                    {selectedBlock.result} Solve
-                                                </h3>
-
+                                                <h3 className="text-lg font-bold text-center mb-2">{selectedBlock.result} Solve</h3>
                                                 <div>
                                                     <label className="text-sm font-semibold text-white/80 block mb-2">Stat type</label>
                                                     <div className="flex gap-2">
                                                         {['Single', 'Average'].map(type => (
-                                                            <button 
-                                                                key={type}
-                                                                onClick={() => updateBlock({ type, count: type==='Average'?5:null })}
-                                                                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.type === type ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
-                                                            >
-                                                                {type}
-                                                            </button>
+                                                            <button key={type} onClick={() => updateBlock({ type, count: type === 'Average' ? 5 : null })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.type === type ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{type}</button>
                                                         ))}
                                                     </div>
                                                 </div>
-
                                                 <div>
                                                     <label className="text-sm font-semibold text-white/80 block mb-2">Stat result</label>
                                                     <div className="flex gap-2">
                                                         {['Best', 'Worst', 'Current'].map(result => {
                                                             if (selectedBlock.type === 'Single' && result === 'Current') return null;
-                                                            if (selectedBlock.type === 'Average' && result === 'Worst') return null; 
-                                                            
-                                                            return (
-                                                                <button 
-                                                                    key={result}
-                                                                    onClick={() => updateBlock({ result })}
-                                                                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.result === result ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
-                                                                >
-                                                                    {result}
-                                                                </button>
-                                                            )
+                                                            if (selectedBlock.type === 'Average' && result === 'Worst') return null;
+                                                            return <button key={result} onClick={() => updateBlock({ result })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.result === result ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{result}</button>;
                                                         })}
                                                     </div>
                                                 </div>
-                                                
                                                 {selectedBlock.type === 'Average' && (
                                                     <div>
                                                         <label className="text-sm font-semibold text-white/80 block mb-2">Count</label>
                                                         <div className="flex gap-2">
                                                             {[5, 12, 50, 100].map(count => (
-                                                                <button 
-                                                                    key={count}
-                                                                    onClick={() => updateBlock({ count })}
-                                                                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.count === count ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}
-                                                                >
-                                                                    {count}
-                                                                </button>
+                                                                <button key={count} onClick={() => updateBlock({ count })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.count === count ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{count}</button>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -1389,7 +1017,6 @@
                                             </div>
                                         );
                                     })()}
-
                                 </div>
                             </div>
                         </div>
