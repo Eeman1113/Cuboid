@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Cuboid - A fast, modern, and simple speedcubing timer.">
     <title>Cuboid</title>
-    <!-- Updated Favicon -->
     <link rel="icon" href="./cube.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,13 +12,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- React & Babel (Standalone used for single-file deployment) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Chart.js for aesthetic graphs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <script>
@@ -50,24 +46,17 @@
             color: #ffffff;
             margin: 0;
             overflow-x: hidden;
-            /* Prevent text selection while interacting with timer */
             user-select: none;
             -webkit-user-select: none;
             -moz-user-select: none;
             -ms-user-select: none;
         }
-        
-        /* Custom Scrollbar for production polish */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
-
-        /* Hide scrollbar but keep functionality */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        /* Cube Map specific grid classes */
         .cube-grid { 
             display: grid; 
             grid-template-columns: repeat(4, 1fr); 
@@ -75,7 +64,7 @@
             gap: 8px; 
             width: 100%; 
             height: auto; 
-            max-width: 260px; /* Constrained to prevent scrolling */
+            max-width: 260px;
             margin: 0 auto;
         }
         .cube-face { 
@@ -91,8 +80,6 @@
             aspect-ratio: 1; 
             box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.2);
         }
-        
-        /* Hardware-accelerated hover states */
         .glow-blue { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
         .glow-blue:hover, .glow-blue.active { box-shadow: 0 0 15px rgba(36, 107, 253, 0.6); }
         .glow-green { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
@@ -104,6 +91,9 @@
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        // --- Google Sheets Sync ---
+        const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxWYpcJ-_6Vy6rqyyEqpV9zrSEyZAfbKT8ptCS8YuFF630CZBJv3aioIW52VgFAp-Au/exec';
 
         // --- Utils & Generators ---
         const MOVES = ["U", "D", "L", "R", "F", "B"];
@@ -137,21 +127,18 @@
             return opposites[move1] === move2;
         }
 
-        // --- Cube Simulator logic to parse notations to visual maps ---
         function getScrambledState(scrambleStr) {
             if (!scrambleStr) return null;
             
             const state = {
-                U: Array(9).fill('#ffffff'), // White
-                L: Array(9).fill('#ff9826'), // Orange
-                F: Array(9).fill('#43ff43'), // Green
-                R: Array(9).fill('#ff4343'), // Red
-                B: Array(9).fill('#246bfd'), // Blue
-                D: Array(9).fill('#ffff49')  // Yellow
+                U: Array(9).fill('#ffffff'),
+                L: Array(9).fill('#ff9826'),
+                F: Array(9).fill('#43ff43'),
+                R: Array(9).fill('#ff4343'),
+                B: Array(9).fill('#246bfd'),
+                D: Array(9).fill('#ffff49')
             };
             
-            // Helper to cycle 4 elements
-            // Flow: f4->f1->f2->f3->f4
             const cycle = (f1, i1, f2, i2, f3, i3, f4, i4) => {
                 let temp = state[f4][i4];
                 state[f4][i4] = state[f3][i3];
@@ -187,12 +174,10 @@
                     cycle('U', 1, 'L', 3, 'D', 7, 'R', 5);
                     cycle('U', 0, 'L', 6, 'D', 8, 'R', 2);
                 } else if (move === 'L') {
-                    // FIX: correct B-face indices (B is mirrored for L column)
                     cycle('U', 0, 'B', 8, 'D', 0, 'F', 0);
                     cycle('U', 3, 'B', 5, 'D', 3, 'F', 3);
                     cycle('U', 6, 'B', 2, 'D', 6, 'F', 6);
                 } else if (move === 'R') {
-                    // FIX: correct B-face indices (B is mirrored for R column)
                     cycle('F', 2, 'U', 2, 'B', 6, 'D', 2);
                     cycle('F', 5, 'U', 5, 'B', 3, 'D', 5);
                     cycle('F', 8, 'U', 8, 'B', 0, 'D', 8);
@@ -203,7 +188,7 @@
             for (let m of moves) {
                 if (!m) continue;
                 const face = m[0];
-                if (!state[face]) continue; // Validate face to prevent crash
+                if (!state[face]) continue;
                 
                 const mod = m[1];
                 let times = 1;
@@ -217,8 +202,6 @@
             return state;
         }
 
-
-        // --- Formatting & Stats Math ---
         function formatTime(ms, penalty = '') {
             if (penalty === 'DNF') return 'DNF';
             let actualMs = ms;
@@ -272,8 +255,6 @@
         const BanIcon = () => (
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
         );
-        
-        // Directional Arrows
         const ArrowLeftIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>;
         const ArrowRightIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>;
         const ArrowUpIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>;
@@ -281,8 +262,9 @@
         const RotateCwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>;
         const RotateCcwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>;
         const NavigationIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
+        const CloudIcon = ({ style }) => <svg style={style} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>;
 
-        // --- Chart Component (Progression + Ao5 + Consistency Band) ---
+        // --- Chart Component ---
         const TimeGraphChart = ({ solves }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -295,7 +277,6 @@
                 const times = solves.map(s => getActualTime(s) / 1000);
                 const labels = solves.map((_, i) => `${i + 1}`);
 
-                // Rolling Ao5 (trim best & worst, avg middle 3)
                 const calcAo5 = (arr, idx) => {
                     if (idx < 4) return null;
                     const w = arr.slice(idx - 4, idx + 1);
@@ -304,7 +285,6 @@
                     return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
                 };
 
-                // Rolling Std Dev (window of 5)
                 const calcStdDev = (arr, idx) => {
                     if (idx < 4) return null;
                     const w = arr.slice(idx - 4, idx + 1);
@@ -325,13 +305,8 @@
                     return (sd !== null && a !== null) ? a - sd : null;
                 });
 
-                // Find best solve index
                 const bestIdx = times.indexOf(Math.min(...times));
-
-                // Seconds formatter for Y axis
                 const fmtAxis = (sec) => Math.round(sec) + 's';
-
-                // Minutes formatter for tooltip
                 const fmtMin = (sec) => {
                     const m = Math.floor(sec / 60);
                     const s = sec % 60;
@@ -339,18 +314,14 @@
                     return m > 0 ? m + ':' + sFixed.padStart(5, '0') : sFixed;
                 };
 
-                if (chartInstance.current) {
-                    chartInstance.current.destroy();
-                }
+                if (chartInstance.current) chartInstance.current.destroy();
 
-                // --- Subtle gradient under solve line ---
                 const h = canvas.parentElement.clientHeight || 240;
                 const solveGrad = ctx.createLinearGradient(0, 0, 0, h);
                 solveGrad.addColorStop(0, 'rgba(36, 107, 253, 0.12)');
                 solveGrad.addColorStop(0.5, 'rgba(36, 107, 253, 0.03)');
                 solveGrad.addColorStop(1, 'rgba(36, 107, 253, 0)');
 
-                // --- Crosshair plugin ---
                 const crosshairPlugin = {
                     id: 'crosshair',
                     afterDraw(chart) {
@@ -371,7 +342,6 @@
                     }
                 };
 
-                // --- Point styling (PB highlighted) ---
                 const pointBg = times.map((_, i) => i === bestIdx ? '#22c55e' : '#181b25');
                 const pointBorder = times.map((_, i) => i === bestIdx ? '#22c55e' : '#246bfd');
                 const pointSize = times.map((_, i) => i === bestIdx ? 5 : 3);
@@ -382,7 +352,6 @@
                     data: {
                         labels: labels,
                         datasets: [
-                            // Upper band boundary
                             {
                                 label: '_bandUpper',
                                 data: bandUpper,
@@ -394,7 +363,6 @@
                                 tension: 0.4,
                                 order: 5,
                             },
-                            // Consistency band (fills between lower → upper)
                             {
                                 label: '_bandLower',
                                 data: bandLower,
@@ -407,7 +375,6 @@
                                 tension: 0.4,
                                 order: 4,
                             },
-                            // Ao5 trend line
                             {
                                 label: 'Ao5',
                                 data: ao5,
@@ -425,7 +392,6 @@
                                 borderCapStyle: 'round',
                                 borderJoinStyle: 'round',
                             },
-                            // Individual solve times
                             {
                                 label: 'Solve',
                                 data: times,
@@ -451,9 +417,7 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: {
-                            padding: { top: 6, right: 6, bottom: 0, left: 0 }
-                        },
+                        layout: { padding: { top: 6, right: 6, bottom: 0, left: 0 } },
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -538,10 +502,7 @@
                             }
                         },
                         interaction: { mode: 'index', intersect: false },
-                        animation: {
-                            duration: 600,
-                            easing: 'easeOutQuart',
-                        }
+                        animation: { duration: 600, easing: 'easeOutQuart' }
                     }
                 });
 
@@ -554,7 +515,6 @@
 
             return <canvas ref={chartRef} className="w-full h-full" />;
         };
-
 
         // --- Components ---
         const Dropdown = ({ label, options, selected, onSelect }) => {
@@ -609,12 +569,10 @@
 
         // --- Main App Component ---
         function App() {
-            // Persisted States (Safely initialized for production environments)
             const [solves, setSolves] = useState(() => {
                 try {
                     const saved = localStorage.getItem('cuboid-solves');
                     const parsed = saved ? JSON.parse(saved) : [];
-                    // Backfill timestamp for old solves using id (which was Date.now())
                     return parsed.map(s => s.timestamp ? s : { ...s, timestamp: Math.floor(s.id) || 0 });
                 } catch(e) { return []; }
             });
@@ -658,12 +616,12 @@
             // Local States
             const [cubeState, setCubeState] = useState(null);
             const [showPbBadge, setShowPbBadge] = useState(false);
+            // 'idle' | 'success' | 'error'
+            const [cloudStatus, setCloudStatus] = useState('idle');
             const panelOptions = ['Solves', 'Stats', 'Scramble', 'Time Graph', 'Export CSV', 'Import CSV', 'None'];
 
-            // Timer state: 'idle' | 'ready' (holding space) | 'running'
             const [timerState, setTimerState] = useState('idle');
             
-            // Restore visual time of the last solve on initial load
             const [timeMs, setTimeMs] = useState(() => {
                 try {
                     const saved = localStorage.getItem('cuboid-solves');
@@ -674,7 +632,6 @@
             const timerRef = useRef(null);
             const startTimeRef = useRef(0);
 
-            // Modal State
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [selectedBlockId, setSelectedBlockId] = useState(1);
 
@@ -707,7 +664,6 @@
                             const penalty = parts[1]?.trim() || '';
                             const scrambleMatch = line.match(/"([^"]*)"/);
                             const scramble = scrambleMatch ? scrambleMatch[1] : parts[2]?.trim() || '';
-                            // Timestamp: always check the last CSV field
                             const lastField = parts[parts.length - 1]?.trim();
                             const timestamp = lastField && /^\d{10,}$/.test(lastField) ? parseInt(lastField) : 0;
                             if (!isNaN(time)) {
@@ -715,9 +671,16 @@
                             }
                             return null;
                         }).filter(Boolean);
+
                         if (importedSolves.length > 0) {
+                            // Ensure every imported solve has a unique id and timestamp
+                            importedSolves.forEach((s, i) => {
+                                if (!s.id) s.id = Date.now() + i + Math.random();
+                                if (!s.timestamp) s.timestamp = s.id;
+                            });
+
+                            let solvesToPush = [];
                             setSolves(prev => {
-                                // Build count map with indices to find existing solves
                                 const indexMap = {};
                                 const updated = prev.map(s => ({ ...s }));
                                 updated.forEach((s, i) => {
@@ -729,7 +692,6 @@
                                 importedSolves.forEach(s => {
                                     const key = s.time + '|' + s.penalty + '|' + s.scramble;
                                     if (indexMap[key] && indexMap[key].length > 0) {
-                                        // Duplicate — backfill timestamp if existing is missing one
                                         const idx = indexMap[key].shift();
                                         if (!updated[idx].timestamp && s.timestamp) {
                                             updated[idx].timestamp = s.timestamp;
@@ -738,11 +700,25 @@
                                         unique.push(s);
                                     }
                                 });
-                                // Merge and sort by timestamp (newest first)
+                                solvesToPush = unique;
                                 const merged = [...updated, ...unique];
                                 merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                                 return merged;
                             });
+
+                            // Push new unique solves to Google Sheets
+                            if (solvesToPush.length > 0) {
+                                fetch(SHEETS_URL, {
+                                    method: 'POST',
+                                    body: JSON.stringify(solvesToPush),
+                                }).then(r => r.json()).then(json => {
+                                    setCloudStatus(json.status === 'success' ? 'success' : 'error');
+                                    setTimeout(() => setCloudStatus('idle'), 1500);
+                                }).catch(() => {
+                                    setCloudStatus('error');
+                                    setTimeout(() => setCloudStatus('idle'), 1500);
+                                });
+                            }
                         }
                     };
                     reader.readAsText(file);
@@ -759,15 +735,13 @@
             useEffect(() => { localStorage.setItem('cuboid-is-locked', JSON.stringify(isLocked)); }, [isLocked]);
             useEffect(() => { localStorage.setItem('cuboid-current-scramble', scramble); }, [scramble]);
 
-            // Initial Scramble logic decoupled safely
             useEffect(() => {
                 if (scrambleMode && scramble === "") {
                     const initScramble = generateScramble();
                     setScramble(initScramble);
                 }
-            }, []); // run once on mount
+            }, []);
 
-            // Sync visual state with scramble variable
             useEffect(() => {
                 if (scrambleMode && scramble) {
                     setCubeState(getScrambledState(scramble));
@@ -776,7 +750,6 @@
                 }
             }, [scramble, scrambleMode]);
 
-            // Safely toggle without nested state loops
             const toggleScrambleMode = useCallback(() => {
                 if (!scrambleMode) {
                     const nextScramble = generateScramble();
@@ -799,11 +772,28 @@
                 timerRef.current = requestAnimationFrame(updateTime);
             }, [updateTime]);
 
+            // --- Google Sheets Sync ---
+            const syncToSheets = useCallback(async (solveData) => {
+                try {
+                    const res = await fetch(SHEETS_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(solveData),
+                    });
+                    const json = await res.json();
+                    setCloudStatus(json.status === 'success' ? 'success' : 'error');
+                } catch(e) {
+                    setCloudStatus('error');
+                }
+                setTimeout(() => setCloudStatus('idle'), 1500);
+            }, []);
+
             const stopTimer = useCallback(() => {
                 cancelAnimationFrame(timerRef.current);
                 setTimerState('idle');
                 const finalTime = Date.now() - startTimeRef.current;
                 setTimeMs(finalTime);
+
+                const newSolve = { id: Date.now(), time: finalTime, penalty: '', scramble: scrambleMode ? scramble : 'No Scramble', timestamp: Date.now() };
                 
                 // Add solve and check for PB
                 setSolves(prev => {
@@ -813,8 +803,11 @@
                     } else {
                         setShowPbBadge(false);
                     }
-                    return [{ id: Date.now(), time: finalTime, penalty: '', scramble: scrambleMode ? scramble : 'No Scramble', timestamp: Date.now() }, ...prev];
+                    return [newSolve, ...prev];
                 });
+
+                // Sync to Google Sheets
+                syncToSheets(newSolve);
                 
                 // Advance Scramble safely if applicable
                 if (!isLocked && scrambleMode) {
@@ -822,7 +815,7 @@
                     setScramble(nextScramble);
                     setCubeState(getScrambledState(nextScramble));
                 }
-            }, [scramble, isLocked, scrambleMode]);
+            }, [scramble, isLocked, scrambleMode, syncToSheets]);
 
             const handleTouchStart = useCallback((e) => {
                 if (isModalOpen) return;
@@ -845,17 +838,17 @@
             }, [timerState, startTimer, isModalOpen]);
 
             useEffect(() => {
-                if (isModalOpen) return; // Disable spacebar timer if modal is open
+                if (isModalOpen) return;
 
                 const handleKeyDown = (e) => {
                     if (e.code === 'Space') {
                         e.preventDefault(); 
-                        if (e.repeat) return; // Ignore auto-repeat when key is held down
+                        if (e.repeat) return;
 
                         if (timerState === 'idle') {
                             setTimerState('ready');
                             setTimeMs(0); 
-                            setShowPbBadge(false); // Hide badge when preparing for new solve
+                            setShowPbBadge(false);
                         } else if (timerState === 'running') {
                             stopTimer();
                         }
@@ -879,7 +872,6 @@
                 };
             }, [timerState, startTimer, stopTimer, isModalOpen]);
 
-            // Controls Handlers
             const handleCopyScramble = () => {
                 if (!scramble) return;
                 const textarea = document.createElement('textarea');
@@ -904,7 +896,6 @@
                 setScramble(generateScramble());
             };
 
-            // Solve Actions
             const togglePenalty = useCallback((id, type) => {
                 setSolves(prev => prev.map(s => {
                     if (s.id !== id) return s;
@@ -916,30 +907,22 @@
                 setSolves(prev => prev.filter(s => s.id !== id));
             }, []);
 
-            // Calculate a single stat based on config
             const calcStatValue = useCallback((config, allSolves) => {
                 const validTimes = allSolves.map(getActualTime).filter(t => t !== Infinity);
                 
-                // If there are solves but all are DNF, return DNF. Otherwise if 0 solves, return '-'
                 if (validTimes.length === 0) return allSolves.length > 0 ? "DNF" : "-";
                 
                 const isSingle = config.type === 'Single';
 
                 if (isSingle) {
-                    if (config.result === 'Best') {
-                        return formatTime(Math.min(...validTimes));
-                    }
-                    if (config.result === 'Worst') {
-                        return formatTime(Math.max(...validTimes));
-                    }
+                    if (config.result === 'Best') return formatTime(Math.min(...validTimes));
+                    if (config.result === 'Worst') return formatTime(Math.max(...validTimes));
                 } else {
                     if (!config.count) {
                         const sum = validTimes.reduce((a, b) => a + b, 0);
                         return formatTime(sum / validTimes.length);
                     }
-                    if (config.result === 'Current') {
-                        return calculateAverage(allSolves, config.count);
-                    }
+                    if (config.result === 'Current') return calculateAverage(allSolves, config.count);
                     if (config.result === 'Best') {
                         let bestAvg = Infinity;
                         for (let i = 0; i <= allSolves.length - config.count; i++) {
@@ -956,7 +939,6 @@
                 return "-";
             }, []);
 
-            // Layout map array (based on CSS grid order)
             const getVisualMap = useCallback(() => {
                 if(!cubeState) return Array(12).fill(null);
                 return [
@@ -966,7 +948,6 @@
                 ];
             }, [cubeState]);
 
-            // Calculate Grid rows needed for Stats panel (2-column layout)
             const totalArea = useMemo(() => statsConfig.reduce((acc, block) => acc + ((block.colSpan || 1) * (block.rowSpan || 1)), 0), [statsConfig]);
             const statsRowsNeeded = Math.max(1, Math.ceil(totalArea / 2));
 
@@ -981,7 +962,6 @@
                                             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                                             <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                                             <line x1="12" y1="22.08" x2="12" y2="12"></line>
-                                            <path d="M12 22.08V12L3.27 6.96"></path>
                                         </svg>
                                         <p className="text-sm">No solves yet</p>
                                     </div>
@@ -997,7 +977,6 @@
                                                         {formatTime(s.time, s.penalty)}
                                                     </span>
                                                 </div>
-                                                
                                                 <div className="flex items-center gap-3 font-bold text-xs tracking-wider">
                                                     <button 
                                                         onClick={() => togglePenalty(s.id, '+2')}
@@ -1097,7 +1076,7 @@
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <div style={{ width: 12, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}></div>
-                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>±1σ</span>
+                                            <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>&plusmn;1&sigma;</span>
                                         </div>
                                         <div className="flex items-center gap-1.5">
                                             <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}></div>
@@ -1202,6 +1181,16 @@
                                         >
                                             <NavigationIcon className="w-[18px] h-[18px]" />
                                         </button>
+                                        <CloudIcon
+                                            title="Google Sheets Backup"
+                                            style={{
+                                                transition: 'color 0.2s, filter 0.2s',
+                                                color: cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)',
+                                                filter: cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none',
+                                                pointerEvents: 'none',
+                                                flexShrink: 0,
+                                            }}
+                                        />
                                         <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble" aria-label="Lock Scramble">
                                             {isLocked ? (
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
@@ -1269,7 +1258,6 @@
                     {isModalOpen && (
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                             <div className="bg-[#12141c] w-full max-w-3xl rounded-xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
-                                {/* Modal Header */}
                                 <div className="flex justify-between items-center p-6 border-b border-white/5">
                                     <div>
                                         <h2 className="text-2xl font-bold text-white mb-1">Customize Stats</h2>
@@ -1280,10 +1268,7 @@
                                     </button>
                                 </div>
 
-                                {/* Modal Body */}
                                 <div className="p-6 overflow-y-auto">
-                                    
-                                    {/* Mock Grid (Scaled similarly to main grid) */}
                                     <div className="grid gap-2 h-64 w-full mb-6" style={{
                                         gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                                         gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))`
@@ -1328,7 +1313,6 @@
                                         </button>
                                     </div>
 
-                                    {/* Edit Options for Selected Block */}
                                     {statsConfig.find(b => b.id === selectedBlockId) && (() => {
                                         const selectedBlock = statsConfig.find(b => b.id === selectedBlockId);
                                         
@@ -1336,7 +1320,6 @@
                                             setStatsConfig(prev => prev.map(b => {
                                                 if (b.id !== selectedBlockId) return b;
                                                 const updated = { ...b, ...updates };
-                                                // auto update label
                                                 if(updated.type === 'Single') {
                                                     updated.label = updated.result === 'Best' ? 'pb' : 'worst';
                                                 } else {
