@@ -41,65 +41,23 @@
         }
     </script>
     <style>
-        body {
-            background-color: #12141c;
-            color: #ffffff;
-            margin: 0;
-            overflow-x: hidden;
-            user-select: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-        }
+        body { background-color: #12141c; color: #ffffff; margin: 0; overflow-x: hidden; user-select: none; -webkit-user-select: none; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .cube-grid { 
-            display: grid; 
-            grid-template-columns: repeat(4, 1fr); 
-            grid-template-rows: repeat(3, 1fr); 
-            gap: 8px; 
-            width: 100%; 
-            height: auto; 
-            max-width: 260px;
-            margin: 0 auto;
-        }
-        .cube-face { 
-            display: grid; 
-            grid-template-columns: repeat(3, 1fr); 
-            grid-template-rows: repeat(3, 1fr); 
-            gap: 4px; 
-        }
-        .cube-sticker { 
-            border-radius: 4px; 
-            width: 100%; 
-            height: 100%; 
-            aspect-ratio: 1; 
-            box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.2);
-        }
+        .cube-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 260px; margin: 0 auto; }
+        .cube-face { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 4px; }
+        .cube-sticker { border-radius: 4px; width: 100%; height: 100%; aspect-ratio: 1; box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.2); }
         .glow-blue { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
         .glow-blue:hover, .glow-blue.active { box-shadow: 0 0 15px rgba(36, 107, 253, 0.6); }
         .glow-green { transition: box-shadow 0.2s ease, background-color 0.2s ease; }
         .glow-green:hover { box-shadow: 0 0 15px rgba(34, 197, 94, 0.6); }
-        @keyframes pbFlash {
-            0%   { opacity: 0; transform: scale(0.85) translateY(-6px); }
-            12%  { opacity: 1; transform: scale(1.06) translateY(0); }
-            22%  { transform: scale(0.97); }
-            30%  { transform: scale(1); }
-            70%  { opacity: 1; }
-            100% { opacity: 0; transform: scale(0.95) translateY(-4px); }
-        }
-        .pb-badge {
-            animation: pbFlash 2.8s ease forwards;
-            pointer-events: none;
-        }
-        @keyframes syncPulse {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 1; }
-        }
+        @keyframes pbFlash { 0% { opacity:0; transform:scale(0.85) translateY(-6px); } 12% { opacity:1; transform:scale(1.06) translateY(0); } 22% { transform:scale(0.97); } 30% { transform:scale(1); } 70% { opacity:1; } 100% { opacity:0; transform:scale(0.95) translateY(-4px); } }
+        .pb-badge { animation: pbFlash 2.8s ease forwards; pointer-events: none; }
+        @keyframes syncPulse { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
         .sync-pulse { animation: syncPulse 1.5s ease-in-out infinite; }
     </style>
 </head>
@@ -109,584 +67,280 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-        // --- Config ---
         const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxWYpcJ-_6Vy6rqyyEqpV9zrSEyZAfbKT8ptCS8YuFF630CZBJv3aioIW52VgFAp-Au/exec';
-        const SYNC_INTERVAL_MS = 30000; // 30 seconds
+        const SYNC_INTERVAL_MS = 30000;
 
-        // ─── User ID ──────────────────────────────────────────────────────────
-        function getOrCreateUserId() {
-            let uid = localStorage.getItem('cuboid-user-id');
-            if (!uid) {
-                uid = 'cuboid_' + makeId();
-                localStorage.setItem('cuboid-user-id', uid);
-            }
-            return uid;
-        }
+        // ─── User ID helpers — NEVER auto-create on read ──────────────────────
+        function getUserId() { return localStorage.getItem('cuboid-user-id') || null; }
+        function createUserId() { const uid = 'cuboid_' + makeId(); localStorage.setItem('cuboid-user-id', uid); return uid; }
+        function adoptUserId(uid) { localStorage.setItem('cuboid-user-id', uid); }
 
-        // ─── ID generator ─────────────────────────────────────────────────────
         function makeId() {
-            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-                return crypto.randomUUID();
-            }
-            return Array.from({ length: 16 }, () =>
-                Math.floor(Math.random() * 16).toString(16)
-            ).join('');
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+            return Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
         }
+        function solveFingerprint(s) { return `${s.time}|${s.penalty}|${s.scramble}`; }
 
-        function solveFingerprint(s) {
-            return `${s.time}|${s.penalty}|${s.scramble}`;
-        }
-
-        // --- Utils & Generators ---
-        const MOVES = ["U", "D", "L", "R", "F", "B"];
-        const MODIFIERS = ["", "'", "2"];
-
+        const MOVES = ["U","D","L","R","F","B"], MODIFIERS = ["","'","2"];
         function generateScramble(length = 20) {
-            let scramble = [];
-            let lastMove = "";
+            let scramble = [], lastMove = "";
             for (let i = 0; i < length; i++) {
-                let move;
-                do {
-                    move = MOVES[Math.floor(Math.random() * MOVES.length)];
-                } while (move === lastMove || isOpposite(move, lastMove));
-                let modifier = MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
-                scramble.push(move + modifier);
-                lastMove = move;
+                let move; do { move = MOVES[Math.floor(Math.random() * MOVES.length)]; } while (move === lastMove || isOpposite(move, lastMove));
+                scramble.push(move + MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)]); lastMove = move;
             }
             return scramble.join(" ");
         }
-
-        function isOpposite(move1, move2) {
-            const opposites = { U: "D", D: "U", L: "R", R: "L", F: "B", B: "F" };
-            return opposites[move1] === move2;
-        }
+        function isOpposite(a, b) { return { U:"D",D:"U",L:"R",R:"L",F:"B",B:"F" }[a] === b; }
 
         function getScrambledState(scrambleStr) {
             if (!scrambleStr) return null;
-            const state = {
-                U: Array(9).fill('#ffffff'),
-                L: Array(9).fill('#ff9826'),
-                F: Array(9).fill('#43ff43'),
-                R: Array(9).fill('#ff4343'),
-                B: Array(9).fill('#246bfd'),
-                D: Array(9).fill('#ffff49')
+            const state = { U:Array(9).fill('#ffffff'), L:Array(9).fill('#ff9826'), F:Array(9).fill('#43ff43'), R:Array(9).fill('#ff4343'), B:Array(9).fill('#246bfd'), D:Array(9).fill('#ffff49') };
+            const cycle = (f1,i1,f2,i2,f3,i3,f4,i4) => { let t=state[f4][i4]; state[f4][i4]=state[f3][i3]; state[f3][i3]=state[f2][i2]; state[f2][i2]=state[f1][i1]; state[f1][i1]=t; };
+            const rotateFaceCW = (f) => { const fc=state[f],t=[...fc]; fc[0]=t[6];fc[1]=t[3];fc[2]=t[0];fc[3]=t[7];fc[4]=t[4];fc[5]=t[1];fc[6]=t[8];fc[7]=t[5];fc[8]=t[2]; };
+            const applyMoveCW = (m) => { rotateFaceCW(m);
+                if(m==='U'){cycle('B',2,'R',2,'F',2,'L',2);cycle('B',1,'R',1,'F',1,'L',1);cycle('B',0,'R',0,'F',0,'L',0);}
+                else if(m==='D'){cycle('F',6,'R',6,'B',6,'L',6);cycle('F',7,'R',7,'B',7,'L',7);cycle('F',8,'R',8,'B',8,'L',8);}
+                else if(m==='F'){cycle('U',6,'R',0,'D',2,'L',8);cycle('U',7,'R',3,'D',1,'L',5);cycle('U',8,'R',6,'D',0,'L',2);}
+                else if(m==='B'){cycle('U',2,'L',0,'D',6,'R',8);cycle('U',1,'L',3,'D',7,'R',5);cycle('U',0,'L',6,'D',8,'R',2);}
+                else if(m==='L'){cycle('U',0,'B',8,'D',0,'F',0);cycle('U',3,'B',5,'D',3,'F',3);cycle('U',6,'B',2,'D',6,'F',6);}
+                else if(m==='R'){cycle('F',2,'U',2,'B',6,'D',2);cycle('F',5,'U',5,'B',3,'D',5);cycle('F',8,'U',8,'B',0,'D',8);}
             };
-            const cycle = (f1, i1, f2, i2, f3, i3, f4, i4) => {
-                let temp = state[f4][i4];
-                state[f4][i4] = state[f3][i3];
-                state[f3][i3] = state[f2][i2];
-                state[f2][i2] = state[f1][i1];
-                state[f1][i1] = temp;
-            };
-            const rotateFaceCW = (f) => {
-                const face = state[f];
-                const temp = [...face];
-                face[0] = temp[6]; face[1] = temp[3]; face[2] = temp[0];
-                face[3] = temp[7]; face[4] = temp[4]; face[5] = temp[1];
-                face[6] = temp[8]; face[7] = temp[5]; face[8] = temp[2];
-            };
-            const applyMoveCW = (move) => {
-                rotateFaceCW(move);
-                if (move === 'U') { cycle('B',2,'R',2,'F',2,'L',2); cycle('B',1,'R',1,'F',1,'L',1); cycle('B',0,'R',0,'F',0,'L',0); }
-                else if (move === 'D') { cycle('F',6,'R',6,'B',6,'L',6); cycle('F',7,'R',7,'B',7,'L',7); cycle('F',8,'R',8,'B',8,'L',8); }
-                else if (move === 'F') { cycle('U',6,'R',0,'D',2,'L',8); cycle('U',7,'R',3,'D',1,'L',5); cycle('U',8,'R',6,'D',0,'L',2); }
-                else if (move === 'B') { cycle('U',2,'L',0,'D',6,'R',8); cycle('U',1,'L',3,'D',7,'R',5); cycle('U',0,'L',6,'D',8,'R',2); }
-                else if (move === 'L') { cycle('U',0,'B',8,'D',0,'F',0); cycle('U',3,'B',5,'D',3,'F',3); cycle('U',6,'B',2,'D',6,'F',6); }
-                else if (move === 'R') { cycle('F',2,'U',2,'B',6,'D',2); cycle('F',5,'U',5,'B',3,'D',5); cycle('F',8,'U',8,'B',0,'D',8); }
-            };
-            const moves = scrambleStr.split(' ');
-            for (let m of moves) {
-                if (!m) continue;
-                const face = m[0];
-                if (!state[face]) continue;
-                const mod = m[1];
-                let times = 1;
-                if (mod === "'") times = 3;
-                else if (mod === '2') times = 2;
-                for (let i = 0; i < times; i++) applyMoveCW(face);
-            }
+            for (let mv of scrambleStr.split(' ')) { if(!mv)continue; const face=mv[0]; if(!state[face])continue; const mod=mv[1]; let times=mod==="'"?3:mod==='2'?2:1; for(let i=0;i<times;i++)applyMoveCW(face); }
             return state;
         }
 
-        function formatTime(ms, penalty = '') {
-            if (penalty === 'DNF') return 'DNF';
-            let actualMs = ms;
-            if (penalty === '+2') actualMs += 2000;
-            if (actualMs < 0) return "0.00";
-            const totalSeconds = Math.floor(actualMs / 1000);
-            const minutes = Math.floor(totalSeconds / 60);
-            const remainingSeconds = totalSeconds % 60;
-            const decimals = Math.floor((actualMs % 1000) / 10);
-            let timeStr = "";
-            if (minutes > 0) {
-                timeStr = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}.${decimals.toString().padStart(2, '0')}`;
-            } else {
-                timeStr = `${remainingSeconds}.${decimals.toString().padStart(2, '0')}`;
-            }
-            if (penalty === '+2') timeStr += '+';
-            return timeStr;
+        function formatTime(ms, penalty='') {
+            if(penalty==='DNF')return'DNF'; let a=ms; if(penalty==='+2')a+=2000; if(a<0)return"0.00";
+            const ts=Math.floor(a/1000),min=Math.floor(ts/60),sec=ts%60,dec=Math.floor((a%1000)/10);
+            let s=''; if(min>0)s=`${min}:${sec.toString().padStart(2,'0')}.${dec.toString().padStart(2,'0')}`; else s=`${sec}.${dec.toString().padStart(2,'0')}`;
+            if(penalty==='+2')s+='+'; return s;
+        }
+        function getActualTime(s) { if(s.penalty==='DNF')return Infinity; if(s.penalty==='+2')return s.time+2000; return s.time; }
+        function calculateAverage(solves,count) {
+            if(solves.length<count)return"-"; const recent=solves.slice(0,count).map(getActualTime); if(recent.filter(t=>t===Infinity).length>1)return"DNF";
+            recent.sort((a,b)=>a-b); const trimmed=recent.slice(1,-1); if(trimmed.includes(Infinity))return"DNF";
+            return formatTime(trimmed.reduce((a,v)=>a+v,0)/trimmed.length);
+        }
+        function mergeSolves(local, server) {
+            const m = new Map(); local.forEach(s => { if(s.timestamp) m.set(String(s.timestamp), s); });
+            server.forEach(s => { const k=String(s.timestamp); if(!m.has(k)) m.set(k, {...s, id:makeId()}); });
+            return Array.from(m.values()).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
         }
 
-        function getActualTime(solve) {
-            if (solve.penalty === 'DNF') return Infinity;
-            if (solve.penalty === '+2') return solve.time + 2000;
-            return solve.time;
-        }
-
-        function calculateAverage(solves, count) {
-            if (solves.length < count) return "-";
-            const recent = solves.slice(0, count).map(getActualTime);
-            const dnfs = recent.filter(t => t === Infinity).length;
-            if (dnfs > 1) return "DNF";
-            recent.sort((a, b) => a - b);
-            const trimmed = recent.slice(1, -1);
-            if (trimmed.includes(Infinity)) return "DNF";
-            const sum = trimmed.reduce((acc, val) => acc + val, 0);
-            return formatTime(sum / trimmed.length);
-        }
-
-        // ─── Merge helper: combine local + server solves, dedup by timestamp ──
-        function mergeSolves(localSolves, serverSolves) {
-            const byTimestamp = new Map();
-
-            // Local solves take priority for penalty state (most recent edit)
-            // But we keep all unique solves from both sides
-            localSolves.forEach(s => {
-                if (s.timestamp) byTimestamp.set(String(s.timestamp), s);
-            });
-
-            serverSolves.forEach(s => {
-                const key = String(s.timestamp);
-                if (!byTimestamp.has(key)) {
-                    // Server has a solve we don't — add it with a fresh local ID
-                    byTimestamp.set(key, { ...s, id: makeId() });
-                }
-                // If we already have it locally, keep local version (user may have edited penalty)
-            });
-
-            const merged = Array.from(byTimestamp.values());
-            merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            return merged;
-        }
-
-        // --- SVGs & Icons ---
+        // --- SVGs ---
         const CaretDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"></path></svg>;
-        const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>;
-        const CubeIcon = () => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M224,177.3V78.7a8.1,8.1,0,0,0-4.1-7l-88-49.5a7.8,7.8,0,0,0-7.8,0l-88,49.5a8.1,8.1,0,0,0-4.1,7v98.6a8.1,8.1,0,0,0,4.1,7l88,49.5a7.8,7.8,0,0,0,7.8,0l88-49.5A8.1,8.1,0,0,0,224,177.3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><polyline points="222.9 74.6 128.9 128 33.1 74.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><line x1="128.9" y1="128" x2="128" y2="234.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></line></svg>
-        );
-        const BanIcon = () => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-        );
-        const ArrowLeftIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>;
-        const ArrowRightIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>;
-        const ArrowUpIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>;
-        const ArrowDownIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>;
-        const RotateCwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><polyline points="21 3 21 8 16 8"></polyline></svg>;
-        const RotateCcwIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>;
-        const NavigationIcon = ({ className }) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
-        const CloudIcon = ({ style }) => <svg style={style} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>;
-        const SyncIcon = ({ className, style }) => <svg className={className} style={style} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path></svg>;
-        const LinkIcon = ({ className }) => <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>;
+        const CloseIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
+        const CubeIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256"><path d="M224,177.3V78.7a8.1,8.1,0,0,0-4.1-7l-88-49.5a7.8,7.8,0,0,0-7.8,0l-88,49.5a8.1,8.1,0,0,0-4.1,7v98.6a8.1,8.1,0,0,0,4.1,7l88,49.5a7.8,7.8,0,0,0,7.8,0l88-49.5A8.1,8.1,0,0,0,224,177.3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><polyline points="222.9 74.6 128.9 128 33.1 74.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><line x1="128.9" y1="128" x2="128" y2="234.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/></svg>;
+        const BanIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>;
+        const ArrowLeftIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>;
+        const ArrowRightIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>;
+        const ArrowUpIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>;
+        const ArrowDownIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>;
+        const RotateCwIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>;
+        const RotateCcwIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>;
+        const NavigationIcon = ({className}) => <svg className={className} width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
+        const CloudIcon = ({style}) => <svg style={style} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>;
+        const CloudOffIcon = ({style}) => <svg style={style} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9.34 9.34a8 8 0 0 0 .66 10.66h9a5 5 0 0 0 1.23-9.85"/><path d="M15.73 5.21A8 8 0 0 0 3.07 14.06"/></svg>;
 
-        // --- Chart Component ---
+        // --- Chart ---
         const TimeGraphChart = ({ solves }) => {
-            const chartRef = useRef(null);
-            const chartInstance = useRef(null);
-
+            const chartRef = useRef(null); const chartInstance = useRef(null);
             useEffect(() => {
-                if (!chartRef.current) return;
-                const canvas = chartRef.current;
-                const ctx = canvas.getContext('2d');
-                const times = solves.map(s => getActualTime(s) / 1000);
-                const labels = solves.map((_, i) => `${i + 1}`);
-
-                const calcAo5 = (arr, idx) => {
-                    if (idx < 4) return null;
-                    const w = arr.slice(idx - 4, idx + 1);
-                    const sorted = [...w].sort((a, b) => a - b);
-                    const trimmed = sorted.slice(1, -1);
-                    return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
-                };
-                const calcStdDev = (arr, idx) => {
-                    if (idx < 4) return null;
-                    const w = arr.slice(idx - 4, idx + 1);
-                    const mean = w.reduce((a, b) => a + b, 0) / w.length;
-                    const variance = w.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / w.length;
-                    return Math.sqrt(variance);
-                };
-                const ao5 = times.map((_, i) => calcAo5(times, i));
-                const bandUpper = times.map((_, i) => { const sd = calcStdDev(times, i); const a = ao5[i]; return (sd !== null && a !== null) ? a + sd : null; });
-                const bandLower = times.map((_, i) => { const sd = calcStdDev(times, i); const a = ao5[i]; return (sd !== null && a !== null) ? a - sd : null; });
+                if (!chartRef.current) return; const canvas = chartRef.current; const ctx = canvas.getContext('2d');
+                const times = solves.map(s => getActualTime(s)/1000); const labels = solves.map((_,i) => `${i+1}`);
+                const calcAo5 = (arr,idx) => { if(idx<4)return null; const w=arr.slice(idx-4,idx+1); const sorted=[...w].sort((a,b)=>a-b); return sorted.slice(1,-1).reduce((a,b)=>a+b,0)/3; };
+                const calcStdDev = (arr,idx) => { if(idx<4)return null; const w=arr.slice(idx-4,idx+1); const mean=w.reduce((a,b)=>a+b,0)/5; return Math.sqrt(w.reduce((sum,v)=>sum+Math.pow(v-mean,2),0)/5); };
+                const ao5 = times.map((_,i) => calcAo5(times,i));
+                const bandUpper = times.map((_,i) => { const sd=calcStdDev(times,i),a=ao5[i]; return(sd!==null&&a!==null)?a+sd:null; });
+                const bandLower = times.map((_,i) => { const sd=calcStdDev(times,i),a=ao5[i]; return(sd!==null&&a!==null)?a-sd:null; });
                 const bestIdx = times.indexOf(Math.min(...times));
-                const fmtAxis = (sec) => Math.round(sec) + 's';
-                const fmtMin = (sec) => { const m = Math.floor(sec / 60); const s = sec % 60; const sFixed = s.toFixed(2); return m > 0 ? m + ':' + sFixed.padStart(5, '0') : sFixed; };
-
+                const fmtAxis = s => Math.round(s)+'s';
+                const fmtMin = s => { const m=Math.floor(s/60),sec=s%60,f=sec.toFixed(2); return m>0?m+':'+f.padStart(5,'0'):f; };
                 if (chartInstance.current) chartInstance.current.destroy();
-
-                const h = canvas.parentElement.clientHeight || 240;
-                const solveGrad = ctx.createLinearGradient(0, 0, 0, h);
-                solveGrad.addColorStop(0, 'rgba(36, 107, 253, 0.12)');
-                solveGrad.addColorStop(0.5, 'rgba(36, 107, 253, 0.03)');
-                solveGrad.addColorStop(1, 'rgba(36, 107, 253, 0)');
-
-                const crosshairPlugin = {
-                    id: 'crosshair',
-                    afterDraw(chart) {
-                        const tt = chart.tooltip;
-                        if (!tt || !tt.getActiveElements().length) return;
-                        const x = tt.getActiveElements()[0].element.x;
-                        const yAxis = chart.scales.y;
-                        const c = chart.ctx;
-                        c.save(); c.beginPath(); c.setLineDash([3, 4]); c.moveTo(x, yAxis.top); c.lineTo(x, yAxis.bottom);
-                        c.lineWidth = 1; c.strokeStyle = 'rgba(255, 255, 255, 0.1)'; c.stroke(); c.restore();
-                    }
-                };
-
-                const pointBg = times.map((_, i) => i === bestIdx ? '#22c55e' : '#181b25');
-                const pointBorder = times.map((_, i) => i === bestIdx ? '#22c55e' : '#246bfd');
-                const pointSize = times.map((_, i) => i === bestIdx ? 5 : 3);
-
-                chartInstance.current = new Chart(ctx, {
-                    type: 'line',
-                    plugins: [crosshairPlugin],
-                    data: {
-                        labels,
-                        datasets: [
-                            { label: '_bandUpper', data: bandUpper, borderColor: 'transparent', backgroundColor: 'transparent', pointRadius: 0, pointHitRadius: 0, fill: false, tension: 0.4, order: 5 },
-                            { label: '_bandLower', data: bandLower, borderColor: 'rgba(34, 197, 94, 0.15)', borderWidth: 1, backgroundColor: 'rgba(34, 197, 94, 0.06)', pointRadius: 0, pointHitRadius: 0, fill: '-1', tension: 0.4, order: 4 },
-                            { label: 'Ao5', data: ao5, borderColor: '#22c55e', backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBackgroundColor: '#22c55e', pointHoverBorderColor: 'rgba(34,197,94,0.25)', pointHoverBorderWidth: 6, fill: false, tension: 0.4, order: 2, borderCapStyle: 'round', borderJoinStyle: 'round' },
-                            { label: 'Solve', data: times, borderColor: '#246bfd', backgroundColor: solveGrad, borderWidth: 2, pointBackgroundColor: pointBg, pointBorderColor: pointBorder, pointBorderWidth: 2, pointRadius: pointSize, pointHoverRadius: 6, pointHoverBackgroundColor: '#246bfd', pointHoverBorderColor: 'rgba(36,107,253,0.25)', pointHoverBorderWidth: 8, fill: true, tension: 0.3, order: 1, borderCapStyle: 'round', borderJoinStyle: 'round' }
-                        ]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        layout: { padding: { top: 6, right: 6, bottom: 0, left: 0 } },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                enabled: false,
-                                external: function(context) {
-                                    let tooltipEl = document.getElementById('chartjs-tooltip-cuboid');
-                                    if (!tooltipEl) { tooltipEl = document.createElement('div'); tooltipEl.id = 'chartjs-tooltip-cuboid'; tooltipEl.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;transition:opacity 0.15s ease,transform 0.15s ease;opacity:0;transform:translateY(4px);'; document.body.appendChild(tooltipEl); }
-                                    const tooltip = context.tooltip;
-                                    if (tooltip.opacity === 0) { tooltipEl.style.opacity = '0'; tooltipEl.style.transform = 'translateY(4px)'; return; }
-                                    const idx = tooltip.dataPoints[0].dataIndex;
-                                    const time = times[idx]; const a5 = ao5[idx]; const sd = calcStdDev(times, idx); const isPB = idx === bestIdx;
-                                    let html = '<div style="background:rgba(12,13,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;backdrop-filter:blur(12px);min-width:130px;">';
-                                    html += '<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #' + labels[idx] + (isPB ? ' <span style="color:#22c55e;">\u2605 PB</span>' : '') + '</div>';
-                                    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:' + (a5 !== null ? '5' : '0') + 'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">' + fmtMin(time) + '</span></div>';
-                                    if (a5 !== null) { html += '<div style="display:flex;justify-content:space-between;gap:12px;">'; html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 ' + fmtMin(a5) + '</div>'; if (sd !== null) html += '<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1' + sd.toFixed(1) + 's</div>'; html += '</div>'; }
-                                    html += '</div>';
-                                    tooltipEl.innerHTML = html; tooltipEl.style.opacity = '1'; tooltipEl.style.transform = 'translateY(0)';
-                                    const canvasRect = context.chart.canvas.getBoundingClientRect();
-                                    let left = canvasRect.left + tooltip.caretX + 12; let top = canvasRect.top + tooltip.caretY - 30;
-                                    const tipRect = tooltipEl.getBoundingClientRect();
-                                    if (left + tipRect.width > window.innerWidth - 8) left = canvasRect.left + tooltip.caretX - tipRect.width - 12;
-                                    if (top < 8) top = 8;
-                                    tooltipEl.style.left = left + 'px'; tooltipEl.style.top = top + 'px';
-                                }
-                            }
-                        },
-                        scales: {
-                            x: { display: true, grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.2)', font: { family: 'Roboto Mono', size: 9 }, maxTicksLimit: 10, padding: 4 }, border: { display: false } },
-                            y: { grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false }, ticks: { color: 'rgba(255,255,255,0.25)', font: { family: 'Roboto Mono', size: 10 }, maxTicksLimit: 5, callback: function(v) { return fmtAxis(v); }, padding: 8 }, border: { display: false } }
-                        },
-                        interaction: { mode: 'index', intersect: false },
-                        animation: { duration: 600, easing: 'easeOutQuart' }
-                    }
-                });
-
-                return () => {
-                    if (chartInstance.current) chartInstance.current.destroy();
-                    const tip = document.getElementById('chartjs-tooltip-cuboid');
-                    if (tip) { tip.style.opacity = '0'; tip.remove(); }
-                };
+                const h = canvas.parentElement.clientHeight||240;
+                const solveGrad = ctx.createLinearGradient(0,0,0,h); solveGrad.addColorStop(0,'rgba(36,107,253,0.12)'); solveGrad.addColorStop(0.5,'rgba(36,107,253,0.03)'); solveGrad.addColorStop(1,'rgba(36,107,253,0)');
+                const crosshairPlugin = { id:'crosshair', afterDraw(chart){ const tt=chart.tooltip; if(!tt||!tt.getActiveElements().length)return; const x=tt.getActiveElements()[0].element.x,yA=chart.scales.y,c=chart.ctx; c.save();c.beginPath();c.setLineDash([3,4]);c.moveTo(x,yA.top);c.lineTo(x,yA.bottom);c.lineWidth=1;c.strokeStyle='rgba(255,255,255,0.1)';c.stroke();c.restore(); } };
+                const pointBg = times.map((_,i) => i===bestIdx?'#22c55e':'#181b25');
+                const pointBorder = times.map((_,i) => i===bestIdx?'#22c55e':'#246bfd');
+                const pointSize = times.map((_,i) => i===bestIdx?5:3);
+                chartInstance.current = new Chart(ctx, { type:'line', plugins:[crosshairPlugin], data:{ labels, datasets:[
+                    { label:'_bU', data:bandUpper, borderColor:'transparent', backgroundColor:'transparent', pointRadius:0, pointHitRadius:0, fill:false, tension:0.4, order:5 },
+                    { label:'_bL', data:bandLower, borderColor:'rgba(34,197,94,0.15)', borderWidth:1, backgroundColor:'rgba(34,197,94,0.06)', pointRadius:0, pointHitRadius:0, fill:'-1', tension:0.4, order:4 },
+                    { label:'Ao5', data:ao5, borderColor:'#22c55e', backgroundColor:'transparent', borderWidth:2, pointRadius:0, pointHoverRadius:5, pointHoverBackgroundColor:'#22c55e', fill:false, tension:0.4, order:2 },
+                    { label:'Solve', data:times, borderColor:'#246bfd', backgroundColor:solveGrad, borderWidth:2, pointBackgroundColor:pointBg, pointBorderColor:pointBorder, pointBorderWidth:2, pointRadius:pointSize, pointHoverRadius:6, fill:true, tension:0.3, order:1 }
+                ]}, options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:6,right:6,bottom:0,left:0}}, plugins:{ legend:{display:false}, tooltip:{ enabled:false, external:function(context){ let el=document.getElementById('chartjs-tooltip-cuboid'); if(!el){el=document.createElement('div');el.id='chartjs-tooltip-cuboid';el.style.cssText='position:fixed;pointer-events:none;z-index:9999;transition:opacity 0.15s ease,transform 0.15s ease;opacity:0;transform:translateY(4px);';document.body.appendChild(el);} const tp=context.tooltip; if(tp.opacity===0){el.style.opacity='0';el.style.transform='translateY(4px)';return;} const idx=tp.dataPoints[0].dataIndex,time=times[idx],a5=ao5[idx],sd=calcStdDev(times,idx),isPB=idx===bestIdx; let h='<div style="background:rgba(12,13,20,0.95);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;backdrop-filter:blur(12px);min-width:130px;">'; h+='<div style="font-family:Inter,sans-serif;font-size:10px;font-weight:600;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Solve #'+labels[idx]+(isPB?' <span style="color:#22c55e;">\u2605 PB</span>':'')+'</div>'; h+='<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:'+(a5!==null?'5':'0')+'px;"><span style="font-family:\'Roboto Mono\',monospace;font-size:18px;font-weight:700;color:#fff;">'+fmtMin(time)+'</span></div>'; if(a5!==null){h+='<div style="display:flex;justify-content:space-between;gap:12px;"><div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:#22c55e;">ao5 '+fmtMin(a5)+'</div>'; if(sd!==null)h+='<div style="font-family:\'Roboto Mono\',monospace;font-size:11px;color:rgba(255,255,255,0.3);">\u00b1'+sd.toFixed(1)+'s</div>';h+='</div>';} h+='</div>'; el.innerHTML=h;el.style.opacity='1';el.style.transform='translateY(0)'; const cr=context.chart.canvas.getBoundingClientRect(); let left=cr.left+tp.caretX+12,top=cr.top+tp.caretY-30; const tr=el.getBoundingClientRect(); if(left+tr.width>window.innerWidth-8)left=cr.left+tp.caretX-tr.width-12; if(top<8)top=8; el.style.left=left+'px';el.style.top=top+'px'; } } }, scales:{ x:{display:true,grid:{display:false},ticks:{color:'rgba(255,255,255,0.2)',font:{family:'Roboto Mono',size:9},maxTicksLimit:10,padding:4},border:{display:false}}, y:{grid:{color:'rgba(255,255,255,0.04)',drawTicks:false},ticks:{color:'rgba(255,255,255,0.25)',font:{family:'Roboto Mono',size:10},maxTicksLimit:5,callback:v=>fmtAxis(v),padding:8},border:{display:false}} }, interaction:{mode:'index',intersect:false}, animation:{duration:600,easing:'easeOutQuart'} } });
+                return () => { if(chartInstance.current)chartInstance.current.destroy(); const tip=document.getElementById('chartjs-tooltip-cuboid'); if(tip){tip.style.opacity='0';tip.remove();} };
             }, [solves]);
-
             return <canvas ref={chartRef} className="w-full h-full" />;
         };
 
         // --- Dropdown ---
         const Dropdown = ({ label, options, selected, onSelect }) => {
-            const [isOpen, setIsOpen] = useState(false);
-            const ref = useRef(null);
-            useEffect(() => {
-                const handleClickOutside = (event) => { if (ref.current && !ref.current.contains(event.target)) setIsOpen(false); };
-                document.addEventListener('mousedown', handleClickOutside);
-                return () => document.removeEventListener('mousedown', handleClickOutside);
-            }, []);
-            const filteredOptions = options.filter(opt => opt !== selected);
+            const [isOpen, setIsOpen] = useState(false); const ref = useRef(null);
+            useEffect(() => { const h = e => { if(ref.current&&!ref.current.contains(e.target))setIsOpen(false); }; document.addEventListener('mousedown',h); return()=>document.removeEventListener('mousedown',h); }, []);
             return (
                 <div className="relative z-[60]" ref={ref}>
-                    <button onClick={() => setIsOpen(!isOpen)} className={`bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition-all glow-blue ${isOpen ? 'active' : ''}`}>
-                        {label} <CaretDown />
-                    </button>
-                    {isOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-48 bg-[#181b25] border border-white/10 rounded-lg shadow-xl overflow-y-auto max-h-60 py-1 no-scrollbar z-[70]">
-                            {filteredOptions.map(opt => (
-                                <button key={opt} onClick={() => { onSelect(opt); setIsOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors ${selected === opt ? 'text-white' : 'text-gray-300'}`}>
-                                    {opt}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                    <button onClick={()=>setIsOpen(!isOpen)} className={`bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-3 py-1.5 rounded flex items-center gap-1 transition-all glow-blue ${isOpen?'active':''}`}>{label} <CaretDown /></button>
+                    {isOpen && <div className="absolute top-full left-0 mt-1 w-48 bg-[#181b25] border border-white/10 rounded-lg shadow-xl overflow-y-auto max-h-60 py-1 no-scrollbar z-[70]">
+                        {options.filter(o=>o!==selected).map(opt => <button key={opt} onClick={()=>{onSelect(opt);setIsOpen(false);}} className="w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-white/5 transition-colors text-gray-300">{opt}</button>)}
+                    </div>}
                 </div>
             );
         };
 
         const DEFAULT_STATS_CONFIG = [
-            { id: 1, type: 'Single', result: 'Best', label: 'pb', count: null, colSpan: 1, rowSpan: 2 },
-            { id: 2, type: 'Single', result: 'Worst', label: 'worst', count: null, colSpan: 1, rowSpan: 1 },
-            { id: 3, type: 'Average', result: 'Current', label: 'avg', count: null, colSpan: 1, rowSpan: 1 },
-            { id: 4, type: 'Average', result: 'Best', label: 'ao5 pb', count: 5, colSpan: 1, rowSpan: 1 },
-            { id: 5, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 },
-            { id: 6, type: 'Average', result: 'Best', label: 'ao12 pb', count: 12, colSpan: 1, rowSpan: 1 },
-            { id: 7, type: 'Average', result: 'Current', label: 'ao12', count: 12, colSpan: 1, rowSpan: 1 },
+            {id:1,type:'Single',result:'Best',label:'pb',count:null,colSpan:1,rowSpan:2},
+            {id:2,type:'Single',result:'Worst',label:'worst',count:null,colSpan:1,rowSpan:1},
+            {id:3,type:'Average',result:'Current',label:'avg',count:null,colSpan:1,rowSpan:1},
+            {id:4,type:'Average',result:'Best',label:'ao5 pb',count:5,colSpan:1,rowSpan:1},
+            {id:5,type:'Average',result:'Current',label:'ao5',count:5,colSpan:1,rowSpan:1},
+            {id:6,type:'Average',result:'Best',label:'ao12 pb',count:12,colSpan:1,rowSpan:1},
+            {id:7,type:'Average',result:'Current',label:'ao12',count:12,colSpan:1,rowSpan:1},
         ];
+        function migrateSolves(p) { return p.map(s => ({...s, id:(!s.id||typeof s.id==='number')?makeId():s.id, timestamp:s.timestamp||(typeof s.id==='number'?Math.floor(s.id):0)})); }
 
-        function migrateSolves(parsed) {
-            return parsed.map(s => {
-                const needsNewId = !s.id || typeof s.id === 'number';
-                return {
-                    ...s,
-                    id: needsNewId ? makeId() : s.id,
-                    timestamp: s.timestamp || (typeof s.id === 'number' ? Math.floor(s.id) : 0),
-                };
-            });
-        }
-
-        // --- Main App ---
+        // ═══════════════════════════════════════════════════════════════════════
+        //  MAIN APP
+        // ═══════════════════════════════════════════════════════════════════════
         function App() {
-            // ─── User ID ──────────────────────────────────────────────────────
-            const [userId, setUserId] = useState(() => getOrCreateUserId());
-            const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | success | error
-            const [lastSyncTime, setLastSyncTime] = useState(0);
+            const [userId, setUserId] = useState(() => getUserId()); // null if new user
+            const [syncStatus, setSyncStatus] = useState('idle');
             const isSyncingRef = useRef(false);
-            const pendingDeletesRef = useRef(new Set()); // timestamps queued for server deletion
+            const pendingDeletesRef = useRef(new Set());
+            const userIdRef = useRef(userId);
+            useEffect(() => { userIdRef.current = userId; }, [userId]);
 
-            const [solves, setSolves] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('cuboid-solves');
-                    const parsed = saved ? JSON.parse(saved) : [];
-                    return migrateSolves(parsed);
-                } catch(e) { return []; }
-            });
-            const [statsConfig, setStatsConfig] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-stats'); return s ? JSON.parse(s) : DEFAULT_STATS_CONFIG; } catch(e) { return DEFAULT_STATS_CONFIG; }
-            });
-            const [panels, setPanels] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-panels'); return s ? JSON.parse(s) : ['Solves', 'Stats', 'Scramble']; } catch(e) { return ['Solves', 'Stats', 'Scramble']; }
-            });
-            const [scrambleMode, setScrambleMode] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-scramble-mode'); return s !== null ? JSON.parse(s) : true; } catch(e) { return true; }
-            });
-            const [showArrows, setShowArrows] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-show-arrows'); return s !== null ? JSON.parse(s) : false; } catch(e) { return false; }
-            });
-            const [isLocked, setIsLocked] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-is-locked'); return s !== null ? JSON.parse(s) : false; } catch(e) { return false; }
-            });
-            const [scramble, setScramble] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-current-scramble'); return s !== null ? s : ""; } catch(e) { return ""; }
-            });
+            const [solves, setSolves] = useState(() => { try { const s=localStorage.getItem('cuboid-solves'); return s?migrateSolves(JSON.parse(s)):[]; } catch(e){return[];} });
+            const [statsConfig, setStatsConfig] = useState(() => { try { const s=localStorage.getItem('cuboid-stats'); return s?JSON.parse(s):DEFAULT_STATS_CONFIG; } catch(e){return DEFAULT_STATS_CONFIG;} });
+            const [panels, setPanels] = useState(() => { try { const s=localStorage.getItem('cuboid-panels'); return s?JSON.parse(s):['Solves','Stats','Scramble']; } catch(e){return['Solves','Stats','Scramble'];} });
+            const [scrambleMode, setScrambleMode] = useState(() => { try { const s=localStorage.getItem('cuboid-scramble-mode'); return s!==null?JSON.parse(s):true; } catch(e){return true;} });
+            const [showArrows, setShowArrows] = useState(() => { try { const s=localStorage.getItem('cuboid-show-arrows'); return s!==null?JSON.parse(s):false; } catch(e){return false;} });
+            const [isLocked, setIsLocked] = useState(() => { try { const s=localStorage.getItem('cuboid-is-locked'); return s!==null?JSON.parse(s):false; } catch(e){return false;} });
+            const [scramble, setScramble] = useState(() => { try { const s=localStorage.getItem('cuboid-current-scramble'); return s!==null?s:""; } catch(e){return"";} });
 
             const [cubeState, setCubeState] = useState(null);
             const [showPbBadge, setShowPbBadge] = useState(false);
             const pbBadgeTimer = useRef(null);
-            useEffect(() => {
-                if (showPbBadge) {
-                    clearTimeout(pbBadgeTimer.current);
-                    pbBadgeTimer.current = setTimeout(() => setShowPbBadge(false), 2850);
-                }
-                return () => clearTimeout(pbBadgeTimer.current);
-            }, [showPbBadge]);
+            useEffect(() => { if(showPbBadge){clearTimeout(pbBadgeTimer.current);pbBadgeTimer.current=setTimeout(()=>setShowPbBadge(false),2850);} return()=>clearTimeout(pbBadgeTimer.current); }, [showPbBadge]);
             const [cloudStatus, setCloudStatus] = useState('idle');
-            const panelOptions = useMemo(() => ['Solves', 'Stats', 'Scramble', 'Time Graph', 'Export CSV', 'Import CSV', 'None'], []);
+            const panelOptions = useMemo(() => ['Solves','Stats','Scramble','Time Graph','Export CSV','Import CSV','None'], []);
             const [timerState, setTimerState] = useState('idle');
-            const [timeMs, setTimeMs] = useState(() => {
-                try { const s = localStorage.getItem('cuboid-solves'); const p = s ? JSON.parse(s) : []; return p.length > 0 ? p[0].time : 0; } catch(e) { return 0; }
-            });
-            const timerRef = useRef(null);
-            const startTimeRef = useRef(0);
+            const [timeMs, setTimeMs] = useState(() => { try { const s=localStorage.getItem('cuboid-solves'); const p=s?JSON.parse(s):[]; return p.length>0?p[0].time:0; } catch(e){return 0;} });
+            const timerRef = useRef(null); const startTimeRef = useRef(0);
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [selectedBlockId, setSelectedBlockId] = useState(1);
 
-            // ─── 2-Way Sync Engine ────────────────────────────────────────────
-            const performSync = useCallback(async (currentSolves, isBackground = false) => {
-                if (isSyncingRef.current) return currentSolves;
+            // ═══ SYNC ENGINE — all functions take explicit uid ═══════════════
+
+            const performSync = useCallback(async (currentSolves, uid, isBackground = false) => {
+                if (!uid || isSyncingRef.current) return currentSolves;
                 isSyncingRef.current = true;
                 if (!isBackground) setSyncStatus('syncing');
-
                 try {
-                    const res = await fetch(SHEETS_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            userId,
-                            action: 'sync',
-                            solves: currentSolves.map(s => ({
-                                id: s.id,
-                                time: s.time,
-                                penalty: s.penalty || '',
-                                scramble: s.scramble || '',
-                                timestamp: s.timestamp
-                            }))
-                        })
-                    });
+                    const res = await fetch(SHEETS_URL, { method:'POST', body:JSON.stringify({ userId:uid, action:'sync', solves:currentSolves.map(s=>({id:s.id,time:s.time,penalty:s.penalty||'',scramble:s.scramble||'',timestamp:s.timestamp})) }) });
                     const json = await res.json();
-
-                    if (json.status === 'success' && json.solves) {
+                    if (json.status==='success' && json.solves) {
                         let merged = mergeSolves(currentSolves, json.solves);
-                        // Filter out any solves with pending server-side deletes
-                        if (pendingDeletesRef.current.size > 0) {
-                            merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
-                        }
-                        setSolves(merged);
-                        setLastSyncTime(Date.now());
-                        setSyncStatus('idle');
-                        isSyncingRef.current = false;
-                        return merged;
-                    } else {
-                        setSyncStatus('idle');
-                        setCloudStatus('error');
-                        setTimeout(() => setCloudStatus('idle'), 2000);
-                    }
-                } catch(e) {
-                    console.error('Sync failed:', e);
-                    setSyncStatus('idle');
-                    setCloudStatus('error');
-                    setTimeout(() => setCloudStatus('idle'), 2000);
-                }
-
-                isSyncingRef.current = false;
-                return currentSolves;
-            }, [userId]);
-
-            // Sync on load
-            const initialSyncDone = useRef(false);
-            useEffect(() => {
-                if (!initialSyncDone.current) {
-                    initialSyncDone.current = true;
-                    performSync(solves);
-                }
+                        if (pendingDeletesRef.current.size > 0) merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
+                        setSolves(merged); setSyncStatus('idle'); isSyncingRef.current = false; return merged;
+                    } else { setSyncStatus('idle'); setCloudStatus('error'); setTimeout(()=>setCloudStatus('idle'),2000); }
+                } catch(e) { console.error('Sync failed:',e); setSyncStatus('idle'); setCloudStatus('error'); setTimeout(()=>setCloudStatus('idle'),2000); }
+                isSyncingRef.current = false; return currentSolves;
             }, []);
 
+            // Sync on load (only if userId already exists)
+            const initialSyncDone = useRef(false);
+            useEffect(() => { if(!initialSyncDone.current){initialSyncDone.current=true; if(userId)performSync(solves,userId);} }, []);
+
             // Periodic sync
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    setSolves(current => {
-                        performSync(current, true);
-                        return current;
-                    });
-                }, SYNC_INTERVAL_MS);
-                return () => clearInterval(interval);
-            }, [performSync]);
+            useEffect(() => { const iv=setInterval(()=>{ const uid=userIdRef.current; if(!uid)return; setSolves(c=>{performSync(c,uid,true);return c;}); },SYNC_INTERVAL_MS); return()=>clearInterval(iv); }, [performSync]);
 
-            // Sync on visibility change (tab focus)
-            useEffect(() => {
-                const handleVisibility = () => {
-                    if (document.visibilityState === 'visible') {
-                        setSolves(current => {
-                            performSync(current, true);
-                            return current;
-                        });
-                    }
-                };
-                document.addEventListener('visibilitychange', handleVisibility);
-                return () => document.removeEventListener('visibilitychange', handleVisibility);
-            }, [performSync]);
+            // Sync on tab focus
+            useEffect(() => { const h=()=>{ if(document.visibilityState==='visible'){const uid=userIdRef.current;if(!uid)return;setSolves(c=>{performSync(c,uid,true);return c;});} }; document.addEventListener('visibilitychange',h); return()=>document.removeEventListener('visibilitychange',h); }, [performSync]);
 
-            // Manual sync button
-            const handleManualSync = useCallback(() => {
-                performSync(solves);
-            }, [performSync, solves]);
+            const handleManualSync = useCallback(() => { const uid=userIdRef.current; if(!uid)return; performSync(solves,uid); }, [performSync,solves]);
 
-            // ─── Export CSV (now includes userId) ─────────────────────────────
+            // ─── Export CSV (Blob) ────────────────────────────────────────────
             const handleExportCSV = useCallback(() => {
                 if (solves.length === 0) return;
-                const header = `#cuboid-userId:${userId}\n`;
-                const csvContent = "data:text/csv;charset=utf-8," + header + "Time (ms),Penalty,Scramble,Timestamp\n" + solves.map(s => `${s.time},${s.penalty},"${s.scramble}",${s.timestamp || ''}`).join("\n");
-                const link = document.createElement("a");
-                link.setAttribute("href", encodeURI(csvContent));
-                link.setAttribute("download", `cuboid_${userId}_${new Date().toISOString().slice(0,10)}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                let csv = '';
+                if (userId) csv += `#cuboid-userId:${userId}\n`;
+                csv += "Time (ms),Penalty,Scramble,Timestamp\n";
+                csv += solves.map(s => `${s.time},${s.penalty || ''},"${(s.scramble||'').replace(/"/g,'""')}",${s.timestamp || ''}`).join("\n");
+                const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = userId ? `cuboid_${userId}_${new Date().toISOString().slice(0,10)}.csv` : `cuboid_export_${new Date().toISOString().slice(0,10)}.csv`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
             }, [solves, userId]);
 
-            // ─── Import CSV (reads userId, links device, then syncs) ──────────
+            // ─── Import CSV ──────────────────────────────────────────────────
             const handleImportCSV = useCallback(() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.csv';
+                const input = document.createElement('input'); input.type='file'; input.accept='.csv';
                 input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
+                    const file = e.target.files[0]; if(!file) return;
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         const text = event.target.result;
+                        if (!text || !text.trim()) return;
                         const lines = text.split('\n');
 
-                        // Check for userId in first line
-                        let importedUserId = null;
-                        let dataStartIdx = 0;
+                        let importedUserId = null, dataStartIdx = 0;
                         if (lines[0] && lines[0].startsWith('#cuboid-userId:')) {
-                            importedUserId = lines[0].replace('#cuboid-userId:', '').trim();
-                            dataStartIdx = 1; // skip metadata line
+                            importedUserId = lines[0].replace('#cuboid-userId:','').trim();
+                            dataStartIdx = 1;
                         }
 
-                        // Skip header row
                         const dataLines = lines.slice(dataStartIdx + 1);
-
-                        const importedSolves = dataLines.filter(line => line.trim()).map(line => {
+                        const importedSolves = dataLines.filter(l=>l.trim()).map(line => {
                             const parts = line.split(',');
                             const time = parseInt(parts[0]?.trim());
                             const penalty = parts[1]?.trim() || '';
                             const scrambleMatch = line.match(/"([^"]*)"/);
-                            const scramble = scrambleMatch ? scrambleMatch[1] : parts[2]?.trim() || '';
-                            const lastField = parts[parts.length - 1]?.trim();
+                            const scr = scrambleMatch ? scrambleMatch[1] : parts[2]?.trim() || '';
+                            const lastField = parts[parts.length-1]?.trim();
                             const timestamp = lastField && /^\d{10,}$/.test(lastField) ? parseInt(lastField) : 0;
-                            if (!isNaN(time)) {
-                                return { id: makeId(), time, penalty, scramble, timestamp: timestamp || Date.now() };
-                            }
+                            if (!isNaN(time) && time > 0) return { id:makeId(), time, penalty, scramble:scr, timestamp:timestamp||Date.now() };
                             return null;
                         }).filter(Boolean);
 
-                        // If CSV has a userId, adopt it (links this device to that account)
-                        if (importedUserId && importedUserId !== userId) {
-                            localStorage.setItem('cuboid-user-id', importedUserId);
-                            setUserId(importedUserId);
+                        // Determine target userId
+                        const oldUserId = userIdRef.current;
+                        let targetUserId = importedUserId || oldUserId;
+                        if (!targetUserId && (importedSolves.length > 0 || solves.length > 0)) {
+                            targetUserId = createUserId();
+                        }
+                        if (!targetUserId) return; // empty import, no solves, nothing to do
+
+                        // Adopt
+                        if (targetUserId !== oldUserId) {
+                            adoptUserId(targetUserId);
+                            setUserId(targetUserId);
+                            userIdRef.current = targetUserId;
                         }
 
-                        const targetUserId = importedUserId || userId;
-
-                        // Merge imported solves with current local solves
-                        const currentLocal = [...solves];
-                        const existingTs = new Set(currentLocal.map(s => String(s.timestamp)).filter(t => t !== '0'));
-                        const existingFps = new Set(currentLocal.map(solveFingerprint));
-
+                        // Merge
+                        const existingTs = new Set(solves.map(s=>String(s.timestamp)).filter(t=>t!=='0'));
+                        const existingFps = new Set(solves.map(solveFingerprint));
                         const toAdd = importedSolves.filter(imp => {
-                            if (imp.timestamp && existingTs.has(String(imp.timestamp))) return false;
-                            if (existingFps.has(solveFingerprint(imp))) return false;
+                            if(imp.timestamp && existingTs.has(String(imp.timestamp))) return false;
+                            if(existingFps.has(solveFingerprint(imp))) return false;
                             return true;
                         });
-
-                        const merged = [...currentLocal, ...toAdd];
-                        merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                        const merged = [...solves, ...toAdd].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
                         setSolves(merged);
 
-                        // Now do a full sync with the (possibly new) userId to push everything to server
-                        // Small delay to let state settle
-                        setTimeout(() => {
-                            performSync(merged);
-                        }, 100);
+                        // Sync with explicit userId — not from closure
+                        if (merged.length > 0) {
+                            setTimeout(() => performSync(merged, targetUserId), 50);
+                        }
                     };
                     reader.readAsText(file);
                 };
                 input.click();
-            }, [solves, userId, performSync]);
+            }, [solves, performSync]);
 
-            // LocalStorage persistence
+            // LocalStorage
             useEffect(() => { localStorage.setItem('cuboid-solves', JSON.stringify(solves)); }, [solves]);
             useEffect(() => { localStorage.setItem('cuboid-stats', JSON.stringify(statsConfig)); }, [statsConfig]);
             useEffect(() => { localStorage.setItem('cuboid-panels', JSON.stringify(panels)); }, [panels]);
@@ -695,514 +349,180 @@
             useEffect(() => { localStorage.setItem('cuboid-is-locked', JSON.stringify(isLocked)); }, [isLocked]);
             useEffect(() => { localStorage.setItem('cuboid-current-scramble', scramble); }, [scramble]);
 
-            useEffect(() => {
-                if (scrambleMode && scramble === "") setScramble(generateScramble());
+            useEffect(() => { if(scrambleMode&&scramble==="")setScramble(generateScramble()); }, []);
+            useEffect(() => { if(scrambleMode&&scramble)setCubeState(getScrambledState(scramble)); else setCubeState(null); }, [scramble,scrambleMode]);
+            const toggleScrambleMode = useCallback(() => { if(!scrambleMode){setScramble(generateScramble());setScrambleMode(true);}else{setScramble("");setScrambleMode(false);} }, [scrambleMode]);
+            const updateTime = useCallback(() => { setTimeMs(Date.now()-startTimeRef.current); timerRef.current=requestAnimationFrame(updateTime); }, []);
+            const startTimer = useCallback(() => { startTimeRef.current=Date.now();setTimerState('running');timerRef.current=requestAnimationFrame(updateTime); }, [updateTime]);
+
+            const syncSingleSolve = useCallback(async (solveData, uid) => {
+                if(!uid)return;
+                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({...solveData,userId:uid})}); const json=await res.json(); setCloudStatus(json.status==='success'?'success':'error'); } catch(e){setCloudStatus('error');}
+                setTimeout(()=>setCloudStatus('idle'),1500);
             }, []);
 
-            useEffect(() => {
-                if (scrambleMode && scramble) setCubeState(getScrambledState(scramble));
-                else setCubeState(null);
-            }, [scramble, scrambleMode]);
-
-            const toggleScrambleMode = useCallback(() => {
-                if (!scrambleMode) {
-                    const next = generateScramble();
-                    setScramble(next);
-                    setScrambleMode(true);
-                } else {
-                    setScramble("");
-                    setScrambleMode(false);
-                }
-            }, [scrambleMode]);
-
-            const updateTime = useCallback(() => {
-                setTimeMs(Date.now() - startTimeRef.current);
-                timerRef.current = requestAnimationFrame(updateTime);
+            const deleteFromSheets = useCallback(async (timestamp, uid) => {
+                if(!timestamp||!uid)return;
+                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'delete',timestamp,userId:uid})}); const json=await res.json(); pendingDeletesRef.current.delete(String(timestamp)); if(json.status!=='success'){setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500);} }
+                catch(e){ pendingDeletesRef.current.delete(String(timestamp)); setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500); }
             }, []);
-
-            const startTimer = useCallback(() => {
-                startTimeRef.current = Date.now();
-                setTimerState('running');
-                timerRef.current = requestAnimationFrame(updateTime);
-            }, [updateTime]);
-
-            // ─── Push single solve to sheets ──────────────────────────────────
-            const syncSingleSolve = useCallback(async (solveData) => {
-                try {
-                    const res = await fetch(SHEETS_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ ...solveData, userId })
-                    });
-                    const json = await res.json();
-                    setCloudStatus(json.status === 'success' ? 'success' : 'error');
-                } catch(e) { setCloudStatus('error'); }
-                setTimeout(() => setCloudStatus('idle'), 1500);
-            }, [userId]);
-
-            const deleteFromSheets = useCallback(async (timestamp) => {
-                if (!timestamp) return;
-                try {
-                    const res = await fetch(SHEETS_URL, {
-                        method: 'POST',
-                        body: JSON.stringify({ action: 'delete', timestamp, userId }),
-                    });
-                    const json = await res.json();
-                    // Server confirmed delete — safe to stop guarding
-                    pendingDeletesRef.current.delete(String(timestamp));
-                    if (json.status !== 'success') {
-                        setCloudStatus('error');
-                        setTimeout(() => setCloudStatus('idle'), 1500);
-                    }
-                } catch(e) {
-                    pendingDeletesRef.current.delete(String(timestamp));
-                    setCloudStatus('error');
-                    setTimeout(() => setCloudStatus('idle'), 1500);
-                }
-            }, [userId]);
 
             const stopTimer = useCallback(() => {
-                cancelAnimationFrame(timerRef.current);
-                setTimerState('idle');
-                const finalTime = Date.now() - startTimeRef.current;
-                setTimeMs(finalTime);
+                cancelAnimationFrame(timerRef.current); setTimerState('idle');
+                const finalTime = Date.now()-startTimeRef.current; setTimeMs(finalTime);
+                const newSolve = { id:makeId(), time:finalTime, penalty:'', scramble:scrambleMode?scramble:'No Scramble', timestamp:Date.now() };
+                setSolves(prev => { const vt=prev.map(getActualTime).filter(t=>t!==Infinity); if(vt.length===0||finalTime<Math.min(...vt))setShowPbBadge(true);else setShowPbBadge(false); return[newSolve,...prev]; });
 
-                const now = Date.now();
-                const newSolve = {
-                    id: makeId(),
-                    time: finalTime,
-                    penalty: '',
-                    scramble: scrambleMode ? scramble : 'No Scramble',
-                    timestamp: now
-                };
+                // Create userId on first solve if needed
+                let uid = userIdRef.current;
+                if (!uid) { uid = createUserId(); setUserId(uid); userIdRef.current = uid; }
+                syncSingleSolve(newSolve, uid);
 
-                setSolves(prev => {
-                    const validTimes = prev.map(getActualTime).filter(t => t !== Infinity);
-                    if (validTimes.length === 0 || finalTime < Math.min(...validTimes)) setShowPbBadge(true);
-                    else setShowPbBadge(false);
-                    return [newSolve, ...prev];
-                });
-
-                syncSingleSolve(newSolve);
-
-                if (!isLocked && scrambleMode) {
-                    const next = generateScramble();
-                    setScramble(next);
-                    setCubeState(getScrambledState(next));
-                }
-            }, [scramble, isLocked, scrambleMode, syncSingleSolve]);
+                if(!isLocked&&scrambleMode){const n=generateScramble();setScramble(n);setCubeState(getScrambledState(n));}
+            }, [scramble,isLocked,scrambleMode,syncSingleSolve]);
 
             const deleteSolve = useCallback((id) => {
-                let timestampToDelete = null;
-                setSolves(prev => {
-                    const target = prev.find(s => s.id === id);
-                    if (target) timestampToDelete = target.timestamp;
-                    return prev.filter(s => s.id !== id);
-                });
-                setTimeout(() => {
-                    if (timestampToDelete) {
-                        pendingDeletesRef.current.add(String(timestampToDelete));
-                        deleteFromSheets(timestampToDelete);
-                    }
-                }, 0);
+                let ts=null; setSolves(prev=>{const t=prev.find(s=>s.id===id);if(t)ts=t.timestamp;return prev.filter(s=>s.id!==id);});
+                setTimeout(()=>{ if(ts){pendingDeletesRef.current.add(String(ts));deleteFromSheets(ts,userIdRef.current);} },0);
             }, [deleteFromSheets]);
 
-            const removeDuplicates = useCallback(() => {
-                setSolves(prev => {
-                    const seenTs  = new Set();
-                    const seenFps = new Set();
-                    return prev.filter(s => {
-                        const tsKey = String(s.timestamp);
-                        const fp    = solveFingerprint(s);
-                        if ((s.timestamp && seenTs.has(tsKey)) || seenFps.has(fp)) return false;
-                        if (s.timestamp) seenTs.add(tsKey);
-                        seenFps.add(fp);
-                        return true;
-                    });
-                });
-            }, []);
+            const removeDuplicates = useCallback(() => { setSolves(prev=>{ const sT=new Set(),sF=new Set(); return prev.filter(s=>{ const k=String(s.timestamp),fp=solveFingerprint(s); if((s.timestamp&&sT.has(k))||sF.has(fp))return false; if(s.timestamp)sT.add(k);sF.add(fp);return true; }); }); }, []);
 
-            const handleTouchStart = useCallback((e) => {
-                if (isModalOpen) return;
-                e.preventDefault();
-                if (timerState === 'idle') { setTimerState('ready'); setTimeMs(0); setShowPbBadge(false); }
-                else if (timerState === 'running') stopTimer();
-            }, [timerState, stopTimer, isModalOpen]);
-
-            const handleTouchEnd = useCallback((e) => {
-                if (isModalOpen) return;
-                e.preventDefault();
-                if (timerState === 'ready') startTimer();
-            }, [timerState, startTimer, isModalOpen]);
+            const handleTouchStart = useCallback((e) => { if(isModalOpen)return; e.preventDefault(); if(timerState==='idle'){setTimerState('ready');setTimeMs(0);setShowPbBadge(false);}else if(timerState==='running')stopTimer(); }, [timerState,stopTimer,isModalOpen]);
+            const handleTouchEnd = useCallback((e) => { if(isModalOpen)return; e.preventDefault(); if(timerState==='ready')startTimer(); }, [timerState,startTimer,isModalOpen]);
 
             useEffect(() => {
-                if (isModalOpen) return;
-                const handleKeyDown = (e) => {
-                    if (e.code === 'Space') {
-                        e.preventDefault();
-                        if (e.repeat) return;
-                        if (timerState === 'idle') { setTimerState('ready'); setTimeMs(0); setShowPbBadge(false); }
-                        else if (timerState === 'running') stopTimer();
-                    }
-                };
-                const handleKeyUp = (e) => {
-                    if (e.code === 'Space') { e.preventDefault(); if (timerState === 'ready') startTimer(); }
-                };
-                window.addEventListener('keydown', handleKeyDown);
-                window.addEventListener('keyup', handleKeyUp);
-                return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-            }, [timerState, startTimer, stopTimer, isModalOpen]);
+                if(isModalOpen)return;
+                const kd = e => { if(e.code==='Space'){e.preventDefault();if(e.repeat)return;if(timerState==='idle'){setTimerState('ready');setTimeMs(0);setShowPbBadge(false);}else if(timerState==='running')stopTimer();} };
+                const ku = e => { if(e.code==='Space'){e.preventDefault();if(timerState==='ready')startTimer();} };
+                window.addEventListener('keydown',kd); window.addEventListener('keyup',ku);
+                return()=>{window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);};
+            }, [timerState,startTimer,stopTimer,isModalOpen]);
 
-            const handleCopyScramble = () => {
-                if (!scramble) return;
-                navigator.clipboard.writeText(scramble).then(() => {
-                    const btn = document.getElementById('copyBtn');
-                    if (btn) { btn.style.color = '#22c55e'; setTimeout(() => btn.style.color = '', 1000); }
-                }).catch(() => {});
-            };
-
+            const handleCopyScramble = () => { if(!scramble)return; navigator.clipboard.writeText(scramble).then(()=>{const b=document.getElementById('copyBtn');if(b){b.style.color='#22c55e';setTimeout(()=>b.style.color='',1000);}}).catch(()=>{}); };
             const handleNewScramble = () => setScramble(generateScramble());
 
-            const togglePenalty = useCallback((id, type) => {
+            const togglePenalty = useCallback((id,type) => {
                 setSolves(prev => {
-                    const updated = prev.map(s => {
-                        if (s.id !== id) return s;
-                        return { ...s, penalty: s.penalty === type ? '' : type };
-                    });
-                    const updatedSolve = updated.find(s => s.id === id);
-                    if (updatedSolve && updatedSolve.timestamp) {
-                        fetch(SHEETS_URL, {
-                            method: 'POST',
-                            body: JSON.stringify({ action: 'updatePenalty', timestamp: updatedSolve.timestamp, penalty: updatedSolve.penalty, userId }),
-                        }).catch(() => {});
-                    }
+                    const updated = prev.map(s => s.id!==id?s:{...s,penalty:s.penalty===type?'':type});
+                    const us = updated.find(s=>s.id===id); const uid=userIdRef.current;
+                    if(uid&&us&&us.timestamp) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:us.timestamp,penalty:us.penalty,userId:uid})}).catch(()=>{});
                     return updated;
                 });
-            }, [userId]);
-
-            const calcStatValue = useCallback((config, allSolves) => {
-                const validTimes = allSolves.map(getActualTime).filter(t => t !== Infinity);
-                if (validTimes.length === 0) return allSolves.length > 0 ? "DNF" : "-";
-                if (config.type === 'Single') {
-                    if (config.result === 'Best') return formatTime(Math.min(...validTimes));
-                    if (config.result === 'Worst') return formatTime(Math.max(...validTimes));
-                } else {
-                    if (!config.count) return formatTime(validTimes.reduce((a, b) => a + b, 0) / validTimes.length);
-                    if (config.result === 'Current') return calculateAverage(allSolves, config.count);
-                    if (config.result === 'Best') {
-                        let bestAvg = Infinity;
-                        for (let i = 0; i <= allSolves.length - config.count; i++) {
-                            const avgStr = calculateAverage(allSolves.slice(i, i + config.count), config.count);
-                            if (avgStr !== "DNF" && avgStr !== "-") {
-                                const avgNum = parseFloat(avgStr) * 1000;
-                                if (avgNum < bestAvg) bestAvg = avgNum;
-                            }
-                        }
-                        return bestAvg === Infinity ? "-" : formatTime(bestAvg);
-                    }
-                }
-                return "-";
             }, []);
 
-            const getVisualMap = useCallback(() => {
-                if (!cubeState) return Array(12).fill(null);
-                return [null, cubeState.U, null, null, cubeState.L, cubeState.F, cubeState.R, cubeState.B, null, cubeState.D, null, null];
-            }, [cubeState]);
+            const calcStatValue = useCallback((config,allSolves) => {
+                const vt=allSolves.map(getActualTime).filter(t=>t!==Infinity);
+                if(vt.length===0)return allSolves.length>0?"DNF":"-";
+                if(config.type==='Single'){if(config.result==='Best')return formatTime(Math.min(...vt));if(config.result==='Worst')return formatTime(Math.max(...vt));}
+                else{if(!config.count)return formatTime(vt.reduce((a,b)=>a+b,0)/vt.length);if(config.result==='Current')return calculateAverage(allSolves,config.count);
+                if(config.result==='Best'){let best=Infinity;for(let i=0;i<=allSolves.length-config.count;i++){const a=calculateAverage(allSolves.slice(i,i+config.count),config.count);if(a!=="DNF"&&a!=="-"){const n=parseFloat(a)*1000;if(n<best)best=n;}}return best===Infinity?"-":formatTime(best);}}
+                return"-";
+            }, []);
 
-            const totalArea = useMemo(() => statsConfig.reduce((acc, block) => acc + ((block.colSpan || 1) * (block.rowSpan || 1)), 0), [statsConfig]);
-            const statsRowsNeeded = Math.max(1, Math.ceil(totalArea / 2));
+            const getVisualMap = useCallback(() => { if(!cubeState)return Array(12).fill(null); return[null,cubeState.U,null,null,cubeState.L,cubeState.F,cubeState.R,cubeState.B,null,cubeState.D,null,null]; }, [cubeState]);
+            const totalArea = useMemo(() => statsConfig.reduce((a,b)=>a+((b.colSpan||1)*(b.rowSpan||1)),0), [statsConfig]);
+            const statsRowsNeeded = Math.max(1, Math.ceil(totalArea/2));
+            const duplicateCount = useMemo(() => { const sT=new Set(),sF=new Set(); let c=0; solves.forEach(s=>{const k=String(s.timestamp),fp=solveFingerprint(s);if((s.timestamp&&sT.has(k))||sF.has(fp)){c++;return;}if(s.timestamp)sT.add(k);sF.add(fp);}); return c; }, [solves]);
 
-            const duplicateCount = useMemo(() => {
-                const seenTs  = new Set();
-                const seenFps = new Set();
-                let count = 0;
-                solves.forEach(s => {
-                    const tsKey = String(s.timestamp);
-                    const fp    = solveFingerprint(s);
-                    if ((s.timestamp && seenTs.has(tsKey)) || seenFps.has(fp)) { count++; return; }
-                    if (s.timestamp) seenTs.add(tsKey);
-                    seenFps.add(fp);
-                });
-                return count;
-            }, [solves]);
-
-            // Copy userId to clipboard
-            const handleCopyUserId = useCallback(() => {
-                navigator.clipboard.writeText(userId).then(() => {
-                    const el = document.getElementById('userIdLabel');
-                    if (el) { el.style.color = '#22c55e'; setTimeout(() => el.style.color = '', 1200); }
-                }).catch(() => {});
-            }, [userId]);
-
-            const renderPanelContent = (type, index) => {
-                switch (type) {
-                    case 'Solves':
-                        return (
-                            <div className="w-full h-full flex flex-col p-3">
-                                {duplicateCount > 0 && (
-                                    <div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5 mb-2 flex-shrink-0">
-                                        <span className="text-red-400 text-xs font-semibold">{duplicateCount} duplicate{duplicateCount > 1 ? 's' : ''} detected</span>
-                                        <button onClick={removeDuplicates} className="text-red-400 hover:text-white text-xs font-bold underline transition-colors ml-2">Remove all</button>
-                                    </div>
-                                )}
-                                {solves.length === 0 ? (
-                                    <div className="text-center opacity-50 flex flex-col items-center justify-center h-full">
-                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                                        <p className="text-sm">No solves yet</p>
-                                    </div>
-                                ) : (
-                                    <div className="overflow-y-auto no-scrollbar flex-1">
-                                        {solves.map((s, idx) => (
-                                            <div key={s.id} className="flex justify-between items-center py-2 text-sm font-mono group/row px-3 hover:bg-white/5 rounded-lg transition-colors">
-                                                <div className="flex items-center gap-4 flex-1">
-                                                    <span className="text-white/40 font-bold w-6">{solves.length - idx}.</span>
-                                                    <span className={`font-bold text-[15px] ${s.penalty === 'DNF' ? 'text-gray-500 line-through' : 'text-[#22c55e]'}`}>
-                                                        {formatTime(s.time, s.penalty)}
-                                                    </span>
-                                                </div>
-                                                <div className="flex items-center gap-3 font-bold text-xs tracking-wider">
-                                                    <button onClick={() => togglePenalty(s.id, '+2')} className={`transition-colors ${s.penalty === '+2' ? 'text-white' : 'text-gray-500 hover:text-white'}`} aria-label="Add +2 penalty">+2</button>
-                                                    <button onClick={() => togglePenalty(s.id, 'DNF')} className={`transition-colors ${s.penalty === 'DNF' ? 'text-white' : 'text-gray-500 hover:text-white'}`} aria-label="Add DNF penalty">DNF</button>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); deleteSolve(s.id); }}
-                                                        className="text-gray-500 hover:text-white ml-2 flex items-center justify-center"
-                                                        aria-label="Delete solve"
-                                                    ><CloseIcon /></button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    case 'Stats':
-                        return (
-                            <>
-                                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-30">
-                                    <button onClick={() => setIsModalOpen(true)} className="bg-success text-black text-xs font-bold px-3 py-1.5 rounded glow-green transition-all shadow-lg">Customize Stats</button>
-                                </div>
-                                <div className="grid gap-2 h-full w-full p-3" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))` }}>
-                                    {statsConfig.map(block => (
-                                        <div key={block.id} className="bg-white/[0.04] rounded-lg p-3 flex flex-col justify-between overflow-hidden" style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}>
-                                            <span className="text-[13px] font-bold text-gray-400 leading-none mb-1">{block.label}</span>
-                                            <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>{calcStatValue(block, solves)}</div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </>
-                        );
-                    case 'Scramble':
-                        return (
-                            <div className="w-full h-full flex items-center justify-center p-3">
-                                {cubeState ? (
-                                    <div className="cube-grid aspect-[4/3]">
-                                        {getVisualMap().map((face, i) => (
-                                            <div key={i} className={face ? "cube-face" : ""}>
-                                                {face && face.map((color, j) => <div key={j} className="cube-sticker" style={{ backgroundColor: color }}></div>)}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : <div className="opacity-30 text-sm">Scramble Disabled</div>}
-                            </div>
-                        );
-                    case 'Time Graph': {
-                        const validGraphSolves = [...solves].reverse().filter(s => getActualTime(s) !== Infinity);
-                        if (validGraphSolves.length < 2) return <div className="w-full h-full flex items-center justify-center opacity-50 text-sm">Need at least 2 valid solves</div>;
-                        return (
-                            <div className="w-full h-full flex flex-col" style={{ padding: '12px 10px 8px' }}>
-                                <div className="flex-1 w-full relative" style={{ minHeight: 0 }}><TimeGraphChart solves={validGraphSolves} /></div>
-                                <div className="flex gap-5 justify-center pt-1.5" style={{ flexShrink: 0 }}>
-                                    <div className="flex items-center gap-1.5"><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#246bfd', boxShadow: '0 0 6px rgba(36,107,253,0.5)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Solves</span></div>
-                                    <div className="flex items-center gap-1.5"><div style={{ width: 14, height: 2, borderRadius: 1, background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.4)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>Ao5</span></div>
-                                    <div className="flex items-center gap-1.5"><div style={{ width: 12, height: 8, borderRadius: 2, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>&plusmn;1&sigma;</span></div>
-                                    <div className="flex items-center gap-1.5"><div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.5)' }}></div><span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>PB</span></div>
-                                </div>
-                            </div>
-                        );
-                    }
-                    case 'None':
-                        return <div className="w-full h-full flex items-center justify-center opacity-30 text-sm">Empty Panel</div>;
-                    default:
-                        return null;
+            const renderPanelContent = (type) => {
+                switch(type) {
+                    case 'Solves': return (
+                        <div className="w-full h-full flex flex-col p-3">
+                            {duplicateCount>0&&<div className="flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5 mb-2 flex-shrink-0"><span className="text-red-400 text-xs font-semibold">{duplicateCount} duplicate{duplicateCount>1?'s':''} detected</span><button onClick={removeDuplicates} className="text-red-400 hover:text-white text-xs font-bold underline transition-colors ml-2">Remove all</button></div>}
+                            {solves.length===0?<div className="text-center opacity-50 flex flex-col items-center justify-center h-full"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><p className="text-sm">No solves yet</p></div>
+                            :<div className="overflow-y-auto no-scrollbar flex-1">{solves.map((s,idx)=><div key={s.id} className="flex justify-between items-center py-2 text-sm font-mono px-3 hover:bg-white/5 rounded-lg transition-colors"><div className="flex items-center gap-4 flex-1"><span className="text-white/40 font-bold w-6">{solves.length-idx}.</span><span className={`font-bold text-[15px] ${s.penalty==='DNF'?'text-gray-500 line-through':'text-[#22c55e]'}`}>{formatTime(s.time,s.penalty)}</span></div><div className="flex items-center gap-3 font-bold text-xs tracking-wider"><button onClick={()=>togglePenalty(s.id,'+2')} className={`transition-colors ${s.penalty==='+2'?'text-white':'text-gray-500 hover:text-white'}`}>+2</button><button onClick={()=>togglePenalty(s.id,'DNF')} className={`transition-colors ${s.penalty==='DNF'?'text-white':'text-gray-500 hover:text-white'}`}>DNF</button><button onClick={e=>{e.stopPropagation();deleteSolve(s.id);}} className="text-gray-500 hover:text-white ml-2 flex items-center justify-center"><CloseIcon /></button></div></div>)}</div>}
+                        </div>);
+                    case 'Stats': return (<>
+                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-30"><button onClick={()=>setIsModalOpen(true)} className="bg-success text-black text-xs font-bold px-3 py-1.5 rounded glow-green transition-all shadow-lg">Customize Stats</button></div>
+                        <div className="grid gap-2 h-full w-full p-3" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))',gridTemplateRows:`repeat(${statsRowsNeeded},minmax(0,1fr))`}}>
+                            {statsConfig.map(block=><div key={block.id} className="bg-white/[0.04] rounded-lg p-3 flex flex-col justify-between overflow-hidden" style={{gridColumn:`span ${block.colSpan||1}`,gridRow:`span ${block.rowSpan||1}`}}><span className="text-[13px] font-bold text-gray-400 leading-none mb-1">{block.label}</span><div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan>1?'text-[48px]':'text-[26px]'}`}>{calcStatValue(block,solves)}</div></div>)}
+                        </div></>);
+                    case 'Scramble': return <div className="w-full h-full flex items-center justify-center p-3">{cubeState?<div className="cube-grid aspect-[4/3]">{getVisualMap().map((face,i)=><div key={i} className={face?"cube-face":""}>{face&&face.map((c,j)=><div key={j} className="cube-sticker" style={{backgroundColor:c}}/>)}</div>)}</div>:<div className="opacity-30 text-sm">Scramble Disabled</div>}</div>;
+                    case 'Time Graph': { const vg=[...solves].reverse().filter(s=>getActualTime(s)!==Infinity); if(vg.length<2)return<div className="w-full h-full flex items-center justify-center opacity-50 text-sm">Need at least 2 valid solves</div>; return(
+                        <div className="w-full h-full flex flex-col" style={{padding:'12px 10px 8px'}}><div className="flex-1 w-full relative" style={{minHeight:0}}><TimeGraphChart solves={vg}/></div>
+                        <div className="flex gap-5 justify-center pt-1.5" style={{flexShrink:0}}>
+                            <div className="flex items-center gap-1.5"><div style={{width:7,height:7,borderRadius:'50%',background:'#246bfd',boxShadow:'0 0 6px rgba(36,107,253,0.5)'}}/><span className="text-[10px] font-medium" style={{color:'rgba(255,255,255,0.3)'}}>Solves</span></div>
+                            <div className="flex items-center gap-1.5"><div style={{width:14,height:2,borderRadius:1,background:'#22c55e',boxShadow:'0 0 6px rgba(34,197,94,0.4)'}}/><span className="text-[10px] font-medium" style={{color:'rgba(255,255,255,0.3)'}}>Ao5</span></div>
+                            <div className="flex items-center gap-1.5"><div style={{width:12,height:8,borderRadius:2,background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.2)'}}/><span className="text-[10px] font-medium" style={{color:'rgba(255,255,255,0.3)'}}>&plusmn;1&sigma;</span></div>
+                            <div className="flex items-center gap-1.5"><div style={{width:7,height:7,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px rgba(34,197,94,0.5)'}}/><span className="text-[10px] font-medium" style={{color:'rgba(255,255,255,0.3)'}}>PB</span></div>
+                        </div></div>); }
+                    case 'None': return <div className="w-full h-full flex items-center justify-center opacity-30 text-sm">Empty Panel</div>;
+                    default: return null;
                 }
             };
-
-            const timerColor = timerState === 'ready' ? 'text-green-500' : 'text-textMain';
 
             return (
                 <div className="flex flex-col min-h-screen font-sans bg-bg overflow-x-hidden relative">
                     <header className="flex flex-wrap items-center justify-between p-4 gap-2 relative z-10">
-                        <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80">
-                            <CubeIcon /> <span>3x3</span>
-                        </div>
-
+                        <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80"><CubeIcon /> <span>3x3</span></div>
                     </header>
-
                     <main className="flex-1 flex flex-col items-center justify-center py-4 px-4 min-h-[35vh]">
                         <div className="text-center w-full max-w-4xl px-2">
-                            <div className="h-8 mb-2 flex justify-center items-center">
-                                {showPbBadge && <span key={Date.now()} className="pb-badge bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">New 3×3 Single PB!</span>}
-                            </div>
-                            
+                            <div className="h-8 mb-2 flex justify-center items-center">{showPbBadge&&<span key={Date.now()} className="pb-badge bg-[#00ba55] text-white text-sm font-semibold px-4 py-1.5 rounded shadow-[0_0_20px_rgba(0,186,85,0.4)]">New 3×3 Single PB!</span>}</div>
                             <div className="font-mono text-base md:text-[21px] leading-[1.6] tracking-wide text-white mb-4 sm:mb-6 min-h-[80px] flex items-end justify-center font-medium">
-                                {scrambleMode ? (
-                                    showArrows && scramble ? (
-                                        <div className="flex flex-wrap justify-center items-end gap-y-2">
-                                            {scramble.split(' ').map((move, i) => {
-                                                if (!move) return null;
-                                                const base = move[0]; const mod = move[1] || '';
-                                                const isPrime = mod === "'"; const isDouble = mod === "2";
-                                                let Arrow = null;
-                                                if (base === 'U') Arrow = isPrime ? ArrowRightIcon : ArrowLeftIcon;
-                                                if (base === 'D') Arrow = isPrime ? ArrowLeftIcon : ArrowRightIcon;
-                                                if (base === 'R') Arrow = isPrime ? ArrowDownIcon : ArrowUpIcon;
-                                                if (base === 'L') Arrow = isPrime ? ArrowUpIcon : ArrowDownIcon;
-                                                if (base === 'F') Arrow = isPrime ? RotateCcwIcon : RotateCwIcon;
-                                                if (base === 'B') Arrow = isPrime ? RotateCwIcon : RotateCcwIcon;
-                                                if (isDouble) {
-                                                    if (base === 'U') Arrow = ArrowLeftIcon; if (base === 'D') Arrow = ArrowRightIcon;
-                                                    if (base === 'R') Arrow = ArrowUpIcon; if (base === 'L') Arrow = ArrowDownIcon;
-                                                    if (base === 'F') Arrow = RotateCwIcon; if (base === 'B') Arrow = RotateCcwIcon;
-                                                }
-                                                return (
-                                                    <div key={i} className="flex flex-col items-center mx-1 gap-1">
-                                                        <span>{move}</span>
-                                                        <div className="flex text-primary opacity-90 text-[18px]">
-                                                            {Arrow && <Arrow />}
-                                                            {isDouble && Arrow && <Arrow className="-ml-2" />}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : <span>{scramble}</span>
-                                ) : null}
+                                {scrambleMode ? (showArrows&&scramble ? <div className="flex flex-wrap justify-center items-end gap-y-2">{scramble.split(' ').map((move,i)=>{ if(!move)return null; const base=move[0],mod=move[1]||'',isPrime=mod==="'",isDouble=mod==="2"; let Arrow=null;
+                                    if(base==='U')Arrow=isPrime?ArrowRightIcon:ArrowLeftIcon;if(base==='D')Arrow=isPrime?ArrowLeftIcon:ArrowRightIcon;if(base==='R')Arrow=isPrime?ArrowDownIcon:ArrowUpIcon;if(base==='L')Arrow=isPrime?ArrowUpIcon:ArrowDownIcon;if(base==='F')Arrow=isPrime?RotateCcwIcon:RotateCwIcon;if(base==='B')Arrow=isPrime?RotateCwIcon:RotateCcwIcon;
+                                    if(isDouble){if(base==='U')Arrow=ArrowLeftIcon;if(base==='D')Arrow=ArrowRightIcon;if(base==='R')Arrow=ArrowUpIcon;if(base==='L')Arrow=ArrowDownIcon;if(base==='F')Arrow=RotateCwIcon;if(base==='B')Arrow=RotateCcwIcon;}
+                                    return<div key={i} className="flex flex-col items-center mx-1 gap-1"><span>{move}</span><div className="flex text-primary opacity-90 text-[18px]">{Arrow&&<Arrow/>}{isDouble&&Arrow&&<Arrow className="-ml-2"/>}</div></div>; })}</div> : <span>{scramble}</span>) : null}
                             </div>
-                            
                             <div className="flex gap-4 sm:gap-6 justify-center text-gray-500 mb-4 sm:mb-8 flex-wrap transition-colors">
-                                <button onClick={toggleScrambleMode} className={`transition-colors ${!scrambleMode ? 'text-red-500' : 'hover:text-white'}`} title={scrambleMode ? "Turn Off Scramble" : "Turn On Scramble"}><BanIcon /></button>
-                                {scrambleMode && (
-                                    <>
-                                        <button onClick={() => setShowArrows(!showArrows)} className={`transition-colors ${showArrows ? 'text-primary' : 'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
-                                        <div className="relative group/cloud flex-shrink-0">
-                                            <button
-                                                onClick={handleManualSync}
-                                                className={`transition-all cursor-pointer ${syncStatus === 'syncing' ? 'sync-pulse' : ''}`}
-                                                style={{
-                                                    color: syncStatus === 'syncing' ? '#246bfd' : cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)',
-                                                    filter: syncStatus === 'syncing' ? 'drop-shadow(0 0 6px #246bfd)' : cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none',
-                                                }}
-                                            >
-                                                <CloudIcon style={{ color: 'inherit', filter: 'inherit' }} />
-                                            </button>
-                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-[#0c0d17] border border-white/10 rounded-lg text-[10px] font-mono text-gray-400 whitespace-nowrap opacity-0 group-hover/cloud:opacity-100 transition-opacity pointer-events-none shadow-xl">
-                                                {userId.replace('cuboid_', '').slice(0, 12)}
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble">
-                                            {isLocked ? <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
-                                            : <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>}
+                                <button onClick={toggleScrambleMode} className={`transition-colors ${!scrambleMode?'text-red-500':'hover:text-white'}`} title={scrambleMode?"Turn Off Scramble":"Turn On Scramble"}><BanIcon /></button>
+                                {scrambleMode && <>
+                                    <button onClick={()=>setShowArrows(!showArrows)} className={`transition-colors ${showArrows?'text-primary':'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
+                                    <div className="relative group/cloud flex-shrink-0">
+                                        <button onClick={handleManualSync} className={`transition-all cursor-pointer ${syncStatus==='syncing'?'sync-pulse':''}`} style={{ color:syncStatus==='syncing'?'#246bfd':cloudStatus==='success'?'#22c55e':cloudStatus==='error'?'#ef4444':'rgb(107,114,128)', filter:syncStatus==='syncing'?'drop-shadow(0 0 6px #246bfd)':cloudStatus==='success'?'drop-shadow(0 0 6px #22c55e)':cloudStatus==='error'?'drop-shadow(0 0 6px #ef4444)':'none' }} title={userId?'Sync now':'Not synced — do a solve or import'}>
+                                            {userId ? <CloudIcon style={{color:'inherit',filter:'inherit'}}/> : <CloudOffIcon style={{color:'inherit',filter:'inherit'}}/>}
                                         </button>
-                                        <button id="copyBtn" onClick={handleCopyScramble} className="hover:text-white transition-colors" title="Copy Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="168 168 216 168 216 40 88 40 88 88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><rect x="40" y="88" width="128" height="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect></svg></button>
-                                        <button onClick={handleNewScramble} className="hover:text-white transition-colors" title="New Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><polyline points="176.2 99.7 224.2 99.7 224.2 51.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></polyline><path d="M190.2,190.2a88,88,0,1,1,0-124.4l34,33.9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path></svg></button>
-                                    </>
-                                )}
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-[#0c0d17] border border-white/10 rounded-lg text-[10px] font-mono text-gray-400 whitespace-nowrap opacity-0 group-hover/cloud:opacity-100 transition-opacity pointer-events-none shadow-xl">
+                                            {userId ? userId.replace('cuboid_','').slice(0,12) : 'offline'}
+                                        </div>
+                                    </div>
+                                    <button onClick={()=>setIsLocked(!isLocked)} className={`transition-colors ${isLocked?'text-primary':'hover:text-white'}`} title="Lock Scramble">
+                                        {isLocked?<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"/><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><circle cx="128" cy="152" r="16"/></svg>
+                                        :<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><circle cx="128" cy="152" r="16"/></svg>}
+                                    </button>
+                                    <button id="copyBtn" onClick={handleCopyScramble} className="hover:text-white transition-colors" title="Copy Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256"><polyline points="168 168 216 168 216 40 88 40 88 88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><rect x="40" y="88" width="128" height="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/></svg></button>
+                                    <button onClick={handleNewScramble} className="hover:text-white transition-colors" title="New Scramble"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 256 256"><polyline points="176.2 99.7 224.2 99.7 224.2 51.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/><path d="M190.2,190.2a88,88,0,1,1,0-124.4l34,33.9" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"/></svg></button>
+                                </>}
                             </div>
                         </div>
-
                         <div className="relative group">
-                            <div className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerColor} tabular-nums tracking-tight cursor-pointer select-none`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-                                {timerState === 'idle' && solves.length > 0 && timeMs === solves[0].time ? formatTime(solves[0].time, solves[0].penalty) : formatTime(timeMs)}
+                            <div className={`font-mono text-[80px] sm:text-[110px] md:text-[130px] lg:text-[160px] leading-none font-medium mb-8 sm:mb-12 transition-colors duration-100 ${timerState==='ready'?'text-green-500':'text-textMain'} tabular-nums tracking-tight cursor-pointer select-none`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                                {timerState==='idle'&&solves.length>0&&timeMs===solves[0].time ? formatTime(solves[0].time,solves[0].penalty) : formatTime(timeMs)}
                             </div>
-                            {timerState === 'idle' && (
-                                <div className="md:block absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Press and hold space to prime timer
-                                </div>
-                            )}
+                            {timerState==='idle'&&<div className="md:block absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-sm text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">Press and hold space to prime timer</div>}
                         </div>
                     </main>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6 p-4 lg:p-6 bg-transparent w-full max-w-[1400px] mx-auto mt-auto">
-                        {panels.map((panelType, index) => (
-                            <div key={`${panelType}-${index}`} className={`bg-module rounded-xl relative group h-[280px] flex flex-col w-full shadow-lg transition-all ${panelType === 'Stats' ? 'border-2 border-[#2a323d]' : 'border border-transparent'}`}>
+                        {panels.map((panelType,index)=>(
+                            <div key={`${panelType}-${index}`} className={`bg-module rounded-xl relative group h-[280px] flex flex-col w-full shadow-lg transition-all ${panelType==='Stats'?'border-2 border-[#2a323d]':'border border-transparent'}`}>
                                 <div className="absolute top-3 left-3 z-40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
-                                    <Dropdown label={panelType} options={panelOptions} selected={panelType} onSelect={(newVal) => {
-                                        if (newVal === 'Export CSV') handleExportCSV();
-                                        else if (newVal === 'Import CSV') handleImportCSV();
-                                        else { const p = [...panels]; p[index] = newVal; setPanels(p); }
-                                    }} />
+                                    <Dropdown label={panelType} options={panelOptions} selected={panelType} onSelect={(v)=>{ if(v==='Export CSV')handleExportCSV();else if(v==='Import CSV')handleImportCSV();else{const p=[...panels];p[index]=v;setPanels(p);} }} />
                                 </div>
-                                <div className="flex-1 relative overflow-hidden">{renderPanelContent(panelType, index)}</div>
+                                <div className="flex-1 relative overflow-hidden">{renderPanelContent(panelType)}</div>
                             </div>
                         ))}
                     </div>
-
-                    {isModalOpen && (
+                    {isModalOpen&&(
                         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                             <div className="bg-[#12141c] w-full max-w-3xl rounded-xl border border-white/10 shadow-2xl flex flex-col max-h-[90vh]">
-                                <div className="flex justify-between items-center p-6 border-b border-white/5">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-white mb-1">Customize Stats</h2>
-                                        <p className="text-sm text-gray-400">Customize this here and now</p>
-                                    </div>
-                                    <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white p-2"><CloseIcon /></button>
-                                </div>
+                                <div className="flex justify-between items-center p-6 border-b border-white/5"><div><h2 className="text-2xl font-bold text-white mb-1">Customize Stats</h2><p className="text-sm text-gray-400">Customize this here and now</p></div><button onClick={()=>setIsModalOpen(false)} className="text-gray-400 hover:text-white p-2"><CloseIcon /></button></div>
                                 <div className="p-6 overflow-y-auto">
-                                    <div className="grid gap-2 h-64 w-full mb-6" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gridTemplateRows: `repeat(${statsRowsNeeded}, minmax(0, 1fr))` }}>
-                                        {statsConfig.map(block => (
-                                            <div key={block.id} onClick={() => setSelectedBlockId(block.id)} className={`bg-white/[0.04] rounded-lg p-2.5 flex flex-col cursor-pointer overflow-hidden transition-all border-2 ${selectedBlockId === block.id ? 'border-primary shadow-[0_0_15px_rgba(36,107,253,0.3)]' : 'border-transparent hover:bg-white/10'}`} style={{ gridColumn: `span ${block.colSpan || 1}`, gridRow: `span ${block.rowSpan || 1}` }}>
-                                                <span className="text-xs font-bold text-gray-400 leading-none mb-1">{block.label}</span>
-                                                <div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan > 1 ? 'text-[48px]' : 'text-[26px]'}`}>{calcStatValue(block, solves)}</div>
-                                            </div>
-                                        ))}
+                                    <div className="grid gap-2 h-64 w-full mb-6" style={{gridTemplateColumns:'repeat(2,minmax(0,1fr))',gridTemplateRows:`repeat(${statsRowsNeeded},minmax(0,1fr))`}}>
+                                        {statsConfig.map(block=><div key={block.id} onClick={()=>setSelectedBlockId(block.id)} className={`bg-white/[0.04] rounded-lg p-2.5 flex flex-col cursor-pointer overflow-hidden transition-all border-2 ${selectedBlockId===block.id?'border-primary shadow-[0_0_15px_rgba(36,107,253,0.3)]':'border-transparent hover:bg-white/10'}`} style={{gridColumn:`span ${block.colSpan||1}`,gridRow:`span ${block.rowSpan||1}`}}><span className="text-xs font-bold text-gray-400 leading-none mb-1">{block.label}</span><div className={`w-full flex-1 flex items-center justify-center font-bold text-white leading-none ${block.rowSpan>1?'text-[48px]':'text-[26px]'}`}>{calcStatValue(block,solves)}</div></div>)}
                                     </div>
                                     <div className="flex justify-center gap-4 mb-8 border-b border-white/5 pb-8">
-                                        <button onClick={() => { const newId = Math.max(0, ...statsConfig.map(b => b.id)) + 1; const nb = { id: newId, type: 'Average', result: 'Current', label: 'ao5', count: 5, colSpan: 1, rowSpan: 1 }; setStatsConfig([...statsConfig, nb]); setSelectedBlockId(newId); }} className="bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-md glow-blue transition-all">Add block</button>
-                                        <button onClick={() => { if (statsConfig.length <= 1) return; const nc = statsConfig.filter(b => b.id !== selectedBlockId); setStatsConfig(nc); setSelectedBlockId(nc[0].id); }} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-md transition-all">Remove selected</button>
+                                        <button onClick={()=>{const nid=Math.max(0,...statsConfig.map(b=>b.id))+1;setStatsConfig([...statsConfig,{id:nid,type:'Average',result:'Current',label:'ao5',count:5,colSpan:1,rowSpan:1}]);setSelectedBlockId(nid);}} className="bg-primary hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-md glow-blue transition-all">Add block</button>
+                                        <button onClick={()=>{if(statsConfig.length<=1)return;const nc=statsConfig.filter(b=>b.id!==selectedBlockId);setStatsConfig(nc);setSelectedBlockId(nc[0].id);}} className="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-semibold px-4 py-2 rounded-md transition-all">Remove selected</button>
                                     </div>
-                                    {statsConfig.find(b => b.id === selectedBlockId) && (() => {
-                                        const selectedBlock = statsConfig.find(b => b.id === selectedBlockId);
-                                        const updateBlock = (updates) => {
-                                            setStatsConfig(prev => prev.map(b => {
-                                                if (b.id !== selectedBlockId) return b;
-                                                const u = { ...b, ...updates };
-                                                u.label = u.type === 'Single' ? (u.result === 'Best' ? 'pb' : 'worst') : `ao${u.count || '?'}` + (u.result === 'Best' ? ' pb' : '');
-                                                return u;
-                                            }));
-                                        };
-                                        return (
-                                            <div className="space-y-6 max-w-md mx-auto">
-                                                <h3 className="text-lg font-bold text-center mb-2">{selectedBlock.result} Solve</h3>
-                                                <div>
-                                                    <label className="text-sm font-semibold text-white/80 block mb-2">Stat type</label>
-                                                    <div className="flex gap-2">
-                                                        {['Single', 'Average'].map(type => (
-                                                            <button key={type} onClick={() => updateBlock({ type, count: type === 'Average' ? 5 : null })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.type === type ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{type}</button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="text-sm font-semibold text-white/80 block mb-2">Stat result</label>
-                                                    <div className="flex gap-2">
-                                                        {['Best', 'Worst', 'Current'].map(result => {
-                                                            if (selectedBlock.type === 'Single' && result === 'Current') return null;
-                                                            if (selectedBlock.type === 'Average' && result === 'Worst') return null;
-                                                            return <button key={result} onClick={() => updateBlock({ result })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.result === result ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{result}</button>;
-                                                        })}
-                                                    </div>
-                                                </div>
-                                                {selectedBlock.type === 'Average' && (
-                                                    <div>
-                                                        <label className="text-sm font-semibold text-white/80 block mb-2">Count</label>
-                                                        <div className="flex gap-2">
-                                                            {[5, 12, 50, 100].map(count => (
-                                                                <button key={count} onClick={() => updateBlock({ count })} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${selectedBlock.count === count ? 'bg-primary text-white glow-blue' : 'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{count}</button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
+                                    {statsConfig.find(b=>b.id===selectedBlockId)&&(()=>{ const sb=statsConfig.find(b=>b.id===selectedBlockId); const ub=(u)=>setStatsConfig(prev=>prev.map(b=>{if(b.id!==selectedBlockId)return b;const n={...b,...u};n.label=n.type==='Single'?(n.result==='Best'?'pb':'worst'):`ao${n.count||'?'}`+(n.result==='Best'?' pb':'');return n;})); return(
+                                        <div className="space-y-6 max-w-md mx-auto">
+                                            <h3 className="text-lg font-bold text-center mb-2">{sb.result} Solve</h3>
+                                            <div><label className="text-sm font-semibold text-white/80 block mb-2">Stat type</label><div className="flex gap-2">{['Single','Average'].map(t=><button key={t} onClick={()=>ub({type:t,count:t==='Average'?5:null})} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${sb.type===t?'bg-primary text-white glow-blue':'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{t}</button>)}</div></div>
+                                            <div><label className="text-sm font-semibold text-white/80 block mb-2">Stat result</label><div className="flex gap-2">{['Best','Worst','Current'].map(r=>{if(sb.type==='Single'&&r==='Current')return null;if(sb.type==='Average'&&r==='Worst')return null;return<button key={r} onClick={()=>ub({result:r})} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${sb.result===r?'bg-primary text-white glow-blue':'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{r}</button>;})}</div></div>
+                                            {sb.type==='Average'&&<div><label className="text-sm font-semibold text-white/80 block mb-2">Count</label><div className="flex gap-2">{[5,12,50,100].map(c=><button key={c} onClick={()=>ub({count:c})} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${sb.count===c?'bg-primary text-white glow-blue':'bg-white/5 text-gray-300 hover:bg-white/10'}`}>{c}</button>)}</div></div>}
+                                        </div>);})()}
                                 </div>
                             </div>
                         </div>
@@ -1210,7 +530,6 @@
                 </div>
             );
         }
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
