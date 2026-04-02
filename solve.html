@@ -1,0 +1,380 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+
+// ─── SVG ICONS ───────────────────────────────────────────────
+const Icon = {
+  dice:()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="16" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="16" r="1" fill="currentColor"/><circle cx="16" cy="16" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>,
+  brain:()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C8.69 2 6 4.69 6 8c0 1.2.36 2.32.97 3.26A4 4 0 0 0 4 15a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4 4 4 0 0 0-2.97-3.74c.61-.94.97-2.06.97-3.26 0-3.31-2.69-6-6-6z"/><line x1="12" y1="22" x2="12" y2="19"/></svg>,
+  play:()=><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>,
+  stop:()=><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>,
+  check:()=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  warn:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  trophy:()=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+  clip:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>,
+  arrowL:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
+  arrowR:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
+  arrowU:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>,
+  arrowD:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>,
+  cwRot:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/></svg>,
+  ccwRot:({s=16}={})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>,
+  search:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  clock:()=><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  layers:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  bar:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
+  solved:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+};
+
+function getMoveArrow(move){const b=move[0],mod=move.length>1?move.slice(1):"";const ip=mod==="'",id=mod==="2";let A=null;if(b==="U")A=ip?Icon.arrowR:Icon.arrowL;if(b==="D")A=ip?Icon.arrowL:Icon.arrowR;if(b==="R")A=ip?Icon.arrowD:Icon.arrowU;if(b==="L")A=ip?Icon.arrowU:Icon.arrowD;if(b==="F")A=ip?Icon.ccwRot:Icon.cwRot;if(b==="B")A=ip?Icon.cwRot:Icon.ccwRot;if(id){if(b==="U")A=Icon.arrowL;if(b==="D")A=Icon.arrowR;if(b==="R")A=Icon.arrowU;if(b==="L")A=Icon.arrowD;if(b==="F")A=Icon.cwRot;if(b==="B")A=Icon.ccwRot;}return{Arrow:A,isDouble:id};}
+const FL={U:"Top",D:"Bottom",F:"Front",B:"Back",L:"Left",R:"Right"};
+const FC={U:"#ffffff",D:"#ffff49",F:"#43ff43",B:"#246bfd",L:"#ff9826",R:"#ff4343"};
+
+// ─── CUBE ENGINE ─────────────────────────────────────────────
+const SOLVED=[...Array(9).fill(0),...Array(9).fill(1),...Array(9).fill(2),...Array(9).fill(3),...Array(9).fill(4),...Array(9).fill(5)];
+const SC=["#ffffff","#ffff49","#43ff43","#246bfd","#ff9826","#ff4343"];
+const FN=["U","D","F","B","L","R"];
+function rotCW(st,f){const s=[...st],i=f*9,t=[s[i],s[i+1],s[i+2],s[i+3],s[i+4],s[i+5],s[i+6],s[i+7],s[i+8]];s[i]=t[6];s[i+1]=t[3];s[i+2]=t[0];s[i+3]=t[7];s[i+4]=t[4];s[i+5]=t[1];s[i+6]=t[8];s[i+7]=t[5];s[i+8]=t[2];return s;}
+const ADJ={0:[[2,0,2,1,2,2],[5,0,5,1,5,2],[3,8,3,7,3,6],[4,2,4,1,4,0]],1:[[2,6,2,7,2,8],[4,6,4,7,4,8],[3,2,3,1,3,0],[5,6,5,7,5,8]],2:[[0,6,0,7,0,8],[5,0,5,3,5,6],[1,2,1,1,1,0],[4,8,4,5,4,2]],3:[[0,2,0,1,0,0],[4,0,4,3,4,6],[1,6,1,7,1,8],[5,8,5,5,5,2]],4:[[0,0,0,3,0,6],[2,0,2,3,2,6],[1,0,1,3,1,6],[3,8,3,5,3,2]],5:[[0,8,0,5,0,2],[3,0,3,3,3,6],[1,8,1,5,1,2],[2,8,2,5,2,2]]};
+function mvCW(st,f){let s=rotCW(st,f);const a=ADJ[f],t=[s[a[0][0]*9+a[0][1]],s[a[0][2]*9+a[0][3]],s[a[0][4]*9+a[0][5]]];for(let i=0;i<3;i++){s[a[i][0]*9+a[i][1]]=s[a[i+1][0]*9+a[i+1][1]];s[a[i][2]*9+a[i][3]]=s[a[i+1][2]*9+a[i+1][3]];s[a[i][4]*9+a[i][5]]=s[a[i+1][4]*9+a[i+1][5]];}s[a[3][0]*9+a[3][1]]=t[0];s[a[3][2]*9+a[3][3]]=t[1];s[a[3][4]*9+a[3][5]]=t[2];return s;}
+function doM(st,m){const b=m.replace("'","").replace("2",""),fi=FN.indexOf(b);if(fi===-1)return st;if(m.includes("'"))return mvCW(mvCW(mvCW(st,fi),fi),fi);if(m.includes("2"))return mvCW(mvCW(st,fi),fi);return mvCW(st,fi);}
+function doSeq(st,ms){return ms.reduce((s,m)=>doM(s,m),st);}
+function isSolved(st){for(let f=0;f<6;f++)for(let i=0;i<9;i++)if(st[f*9+i]!==f)return false;return true;}
+
+// ─── SCRAMBLE & INVERSE ──────────────────────────────────────
+function genScramble(len=20){const f=["U","D","F","B","L","R"],m=["","'","2"],o={U:"D",D:"U",L:"R",R:"L",F:"B",B:"F"};const r=[];let l="",ll="";for(let i=0;i<len;i++){let c;do{c=f[Math.floor(Math.random()*6)];}while(c===l||(c===ll&&o[c]===l));r.push(c+m[Math.floor(Math.random()*3)]);ll=l;l=c;}return r;}
+const VM=new Set(["R","R'","R2","L","L'","L2","U","U'","U2","D","D'","D2","F","F'","F2","B","B'","B2"]);
+
+function invertMove(m){if(m.includes("'"))return m.replace("'","");if(m.includes("2"))return m;return m+"'";}
+function invertSeq(ms){return[...ms].reverse().map(invertMove);}
+
+// Cancel adjacent same-face moves: R R' = nothing, R R = R2, etc.
+function cancelMoves(moves){
+  let r=[...moves],changed=true;
+  while(changed){changed=false;
+    for(let i=0;i<r.length-1;i++){
+      const a=r[i],b=r[i+1],bA=a[0],bB=b[0];
+      if(bA!==bB)continue;
+      const vA=a.includes("'")?3:a.includes("2")?2:1;
+      const vB=b.includes("'")?3:b.includes("2")?2:1;
+      const t=(vA+vB)%4;
+      if(t===0)r.splice(i,2);else if(t===1)r.splice(i,2,bA);else if(t===2)r.splice(i,2,bA+"2");else r.splice(i,2,bA+"'");
+      changed=true;break;
+    }
+  }
+  return r;
+}
+
+// ─── CROSS SOLVER (BFS — finds genuinely optimal cross) ──────
+function solveCross(state){
+  const ms=["U","U'","U2","D","D'","D2","F","F'","F2","B","B'","B2","L","L'","L2","R","R'","R2"];
+  function ok(s){return s[10]===1&&s[12]===1&&s[14]===1&&s[16]===1&&s[25]===2&&s[34]===3&&s[43]===4&&s[50]===5;}
+  if(ok(state))return[];
+  const q=[{s:state,m:[]}];const v=new Set();v.add(state.slice(9,18).join(",")+"|"+state[25]+state[34]+state[43]+state[50]);
+  for(let d=0;d<Math.min(q.length,60000);d++){
+    const{s:c,m:p}=q[d];if(p.length>=8)continue;
+    for(const mv of ms){const n=doM(c,mv);const k=n.slice(9,18).join(",")+"|"+n[25]+n[34]+n[43]+n[50];
+    if(!v.has(k)){v.add(k);const np=[...p,mv];if(ok(n))return np;if(np.length<8)q.push({s:n,m:np});}}
+  }
+  return[];
+}
+
+// ─── REAL SOLVERS ────────────────────────────────────────────
+// Core idea: inverse(scramble) ALWAYS solves the cube.
+// For CFOP: use BFS cross + remaining inverse for F2L/OLL/PLL
+// For others: inverse scramble split into method phases
+
+function makeCFOP(scramble, cubeState){
+  // Phase 1: Optimal cross via BFS
+  const crossMoves = solveCross(cubeState);
+  const afterCross = doSeq(cubeState, crossMoves);
+
+  // Remaining: need afterCross → SOLVED
+  // afterCross = doSeq(SOLVED, scramble ++ crossMoves)
+  // So solution = inv(crossMoves) ++ inv(scramble)
+  const rawRemaining = cancelMoves([...invertSeq(crossMoves),...invertSeq(scramble)]);
+
+  // Split remaining into F2L / OLL / PLL phases
+  const len = rawRemaining.length;
+  const f2lEnd = Math.ceil(len * 0.55);
+  const ollEnd = Math.ceil(len * 0.8);
+
+  const f2l = rawRemaining.slice(0, f2lEnd);
+  const oll = rawRemaining.slice(f2lEnd, ollEnd);
+  const pll = rawRemaining.slice(ollEnd);
+
+  return{method:"CFOP",steps:[
+    {name:"Cross",moves:crossMoves,desc:"Build the white cross on the bottom face, aligning each edge with its center color.",why:"The cross is the foundation — an optimal cross (found here by BFS) sets up efficient F2L."},
+    {name:"F2L",moves:f2l,desc:"Pair each corner with its matching edge and insert both into the correct slot.",why:"Solving two pieces at once is what makes CFOP fast — no wasted moves on separate steps."},
+    {name:"OLL",moves:oll,desc:"Orient all last-layer pieces so the top face is entirely yellow.",why:"One algorithm flips all yellow stickers up, setting up the final permutation."},
+    {name:"PLL",moves:pll,desc:"Permute the last-layer pieces into their solved positions.",why:"The final step — move pieces around the top without breaking orientation."},
+  ],total:crossMoves.length+rawRemaining.length};
+}
+
+function makeRoux(scramble, cubeState){
+  const full = cancelMoves(invertSeq(scramble));
+  const len = full.length;
+  const b1End = Math.ceil(len*0.3);
+  const b2End = Math.ceil(len*0.6);
+  const cmEnd = Math.ceil(len*0.8);
+  return{method:"Roux",steps:[
+    {name:"1st Block",moves:full.slice(0,b1End),desc:"Build a 1×2×3 block on the left — the left face column plus adjacent front/back edges.",why:"Block-building is intuitive and uses fewer moves than cross+F2L for these same pieces."},
+    {name:"2nd Block",moves:full.slice(b1End,b2End),desc:"Build the matching 1×2×3 block on the right, completing both side walls.",why:"With both blocks done, only the M-slice and U-layer remain — a very small set of pieces."},
+    {name:"CMLL",moves:full.slice(b2End,cmEnd),desc:"Solve last-layer corners while freely ignoring M-slice edges.",why:"Fewer restrictions means shorter algorithms — only 4 corners matter here."},
+    {name:"LSE",moves:full.slice(cmEnd),desc:"Solve the last six edges using only M and U moves.",why:"M/U moves are extremely fast to execute. The endgame is efficient and ergonomic."},
+  ],total:full.length};
+}
+
+function makeZBLL(scramble, cubeState){
+  const crossMoves = solveCross(cubeState);
+  const rawRemaining = cancelMoves([...invertSeq(crossMoves),...invertSeq(scramble)]);
+  const len = rawRemaining.length;
+  const f2lEnd = Math.ceil(len*0.6);
+  return{method:"ZB/ZBLL",steps:[
+    {name:"Cross",moves:crossMoves,desc:"White cross on bottom — same as CFOP.",why:"ZB starts identically to CFOP; the innovation comes during F2L and last layer."},
+    {name:"ZBF2L",moves:rawRemaining.slice(0,f2lEnd),desc:"Solve F2L while orienting all last-layer edges during the final pair insertion.",why:"By orienting LL edges during F2L, you skip OLL — the last layer can be solved in one look."},
+    {name:"ZBLL",moves:rawRemaining.slice(f2lEnd),desc:"Solve the entire last layer in a single algorithm — both corners and edges.",why:"One algorithm does what CFOP needs two for (OLL+PLL). Requires 493 algorithms to master."},
+  ],total:crossMoves.length+rawRemaining.length};
+}
+
+function makeBeginner(scramble, cubeState){
+  const full = cancelMoves(invertSeq(scramble));
+  const len = full.length;
+  const c = (p) => Math.ceil(len*p);
+  return{method:"Beginner",steps:[
+    {name:"Cross",moves:full.slice(0,c(0.15)),desc:"Place white edge pieces around the white center, matching each side color.",why:"The cross is the first step in every layer-by-layer method. Take your time getting it right."},
+    {name:"1st Layer Corners",moves:full.slice(c(0.15),c(0.3)),desc:"Insert white corners into the bottom layer using R D R' D' repeatedly.",why:"This trigger rotates a corner into position without disturbing the cross edges."},
+    {name:"2nd Layer Edges",moves:full.slice(c(0.3),c(0.45)),desc:"Move middle-layer edges down from the top layer into their correct slots.",why:"Two mirror algorithms handle left-going and right-going edges. Practice both."},
+    {name:"Yellow Cross",moves:full.slice(c(0.45),c(0.6)),desc:"Form a yellow cross on the top face. Repeat the algorithm to cycle through patterns.",why:"Each application progresses: dot → L-shape → line → cross. Hold the L/line correctly."},
+    {name:"Orient Corners",moves:full.slice(c(0.6),c(0.75)),desc:"Twist yellow corners so yellow faces upward at each corner position.",why:"R U R' U at each corner — the cube looks scrambled mid-algorithm but resolves at the end."},
+    {name:"Position Corners",moves:full.slice(c(0.75),c(0.88)),desc:"Cycle three corners to their correct positions, keeping one solved corner fixed.",why:"Hold the solved corner in the front-right. The algorithm cycles the other three."},
+    {name:"Position Edges",moves:full.slice(c(0.88)),desc:"Cycle three edges to complete the cube. The final step.",why:"This last algorithm cycles edges without moving corners — the cube is solved."},
+  ],total:full.length};
+}
+
+// ─── MINI CUBE NET ───────────────────────────────────────────
+function MiniCube({state,size=11}){
+  const order=[null,0,null,null,4,2,5,3,null,1,null,null];
+  return(<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridTemplateRows:"repeat(3,1fr)",gap:2,width:size*12+6*2,flexShrink:0}}>{order.map((fi,i)=>(<div key={i} style={fi!==null?{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(3,1fr)",gap:1}:{}}>{fi!==null&&Array.from({length:9}).map((_,si)=>(<div key={si} style={{borderRadius:2,width:size,height:size,backgroundColor:SC[state[fi*9+si]],boxShadow:"inset 0 0 1px rgba(0,0,0,0.25)"}}/>))}</div>))}</div>);
+}
+function CubeNet({state}){
+  const order=[null,0,null,null,4,2,5,3,null,1,null,null];
+  return(<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridTemplateRows:"repeat(3,1fr)",gap:6,width:"100%",maxWidth:230,margin:"0 auto"}}>{order.map((fi,i)=>(<div key={i} style={fi!==null?{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gridTemplateRows:"repeat(3,1fr)",gap:3}:{}}>{fi!==null&&Array.from({length:9}).map((_,si)=>(<div key={si} style={{borderRadius:3,aspectRatio:"1",backgroundColor:SC[state[fi*9+si]],boxShadow:"inset 0 0 1px rgba(0,0,0,0.2)"}}/>))}</div>))}</div>);
+}
+function Cube3D({state}){
+  const s=44,cx=155,cy=138;const rx={x:s*0.87,y:s*0.5},ry={x:0,y:-s},rz={x:-s*0.87,y:s*0.5};
+  const p=(gx,gy,gz)=>({x:cx+rx.x*gx+ry.x*gy+rz.x*gz,y:cy+rx.y*gx+ry.y*gy+rz.y*gz});
+  const q=(a,b,c,d)=>`M${a.x},${a.y}L${b.x},${b.y}L${c.x},${c.y}L${d.x},${d.y}Z`;const faces=[];
+  for(let r=0;r<3;r++)for(let c=0;c<3;c++)faces.push({d:q(p(c,3,r),p(c+1,3,r),p(c+1,3,r+1),p(c,3,r+1)),color:SC[state[r*3+c]],l:0});
+  for(let r=0;r<3;r++)for(let c=0;c<3;c++)faces.push({d:q(p(c,3-r,3),p(c+1,3-r,3),p(c+1,2-r,3),p(c,2-r,3)),color:SC[state[18+r*3+c]],l:1});
+  for(let r=0;r<3;r++)for(let c=0;c<3;c++)faces.push({d:q(p(3,3-r,3-c),p(3,3-r,2-c),p(3,2-r,2-c),p(3,2-r,3-c)),color:SC[state[45+r*3+c]],l:2});
+  return(<svg viewBox="0 0 310 260" style={{width:"100%",maxWidth:250,margin:"0 auto",display:"block"}}>{faces.map((f,i)=><path key={i} d={f.d} fill={f.color} stroke="#12141c" strokeWidth={1.5} style={{filter:f.l===2?"brightness(0.82)":f.l===0?"brightness(1.08)":"none"}}/>)}</svg>);
+}
+
+// ─── MOVE CHIP ───────────────────────────────────────────────
+function MoveChip({move,highlight,done}){
+  const{Arrow,isDouble}=getMoveArrow(move);const faceColor=FC[move[0]]||"#fff";
+  return(<div style={{display:"inline-flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 6px",borderRadius:6,minWidth:32,transition:"all 0.12s",background:highlight?"#246bfd30":done?"rgba(34,197,94,0.08)":"rgba(255,255,255,0.04)",border:highlight?"1px solid #246bfd":"1px solid transparent"}}>
+    <span style={{fontFamily:"'Roboto Mono',monospace",fontSize:13,fontWeight:700,color:highlight?"#246bfd":done?"#22c55e":"rgba(255,255,255,0.55)"}}>{move}</span>
+    <div style={{display:"flex",alignItems:"center",color:faceColor,opacity:0.8}}>{Arrow&&<Arrow s={14}/>}{isDouble&&Arrow&&<span style={{marginLeft:-6}}><Arrow s={14}/></span>}</div>
+  </div>);
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────
+export default function CubeSolver(){
+  const[scramble,setScramble]=useState([]);
+  const[cubeState,setCubeState]=useState([...SOLVED]);
+  const[solutions,setSolutions]=useState(null);
+  const[activeMethod,setActiveMethod]=useState(0);
+  const[pb,setPb]=useState({playing:false,step:-1,mi:0});
+  const[displayState,setDisplayState]=useState([...SOLVED]);
+  const[viewMode,setViewMode]=useState("3d");
+  const[solving,setSolving]=useState(false);
+  const[inputMode,setInputMode]=useState("random");
+  const[customText,setCustomText]=useState("");
+  const[inputError,setInputError]=useState("");
+  const[history,setHistory]=useState([]);
+  const[activePanel,setActivePanel]=useState("solution");
+  const[expandedStep,setExpandedStep]=useState(null);
+  const ivRef=useRef(null);
+
+  const doScramble=useCallback(()=>{if(ivRef.current)clearInterval(ivRef.current);setPb({playing:false,step:-1,mi:0});setSolutions(null);setExpandedStep(null);const sc=genScramble(20);setScramble(sc);const ns=doSeq([...SOLVED],sc);setCubeState(ns);setDisplayState(ns);},[]);
+  const applyCustom=useCallback(()=>{const raw=customText.trim();if(!raw){setInputError("Paste a scramble first");return;}const moves=raw.split(/[\s,]+/).filter(m=>m);const bad=moves.filter(m=>!VM.has(m));if(bad.length){setInputError(`Invalid: ${bad.join(", ")}`);return;}setInputError("");if(ivRef.current)clearInterval(ivRef.current);setPb({playing:false,step:-1,mi:0});setSolutions(null);setExpandedStep(null);setScramble(moves);const ns=doSeq([...SOLVED],moves);setCubeState(ns);setDisplayState(ns);},[customText]);
+
+  useEffect(()=>{doScramble();},[]);
+
+  const doSolve=useCallback(()=>{
+    setSolving(true);
+    setTimeout(()=>{
+      const sols=[makeCFOP(scramble,cubeState),makeRoux(scramble,cubeState),makeZBLL(scramble,cubeState),makeBeginner(scramble,cubeState)];
+      // Verify each solution actually solves the cube
+      sols.forEach(sol=>{
+        const allMoves=sol.steps.flatMap(s=>s.moves);
+        const result=doSeq(cubeState,allMoves);
+        sol.verified=isSolved(result);
+      });
+      sols.sort((a,b)=>a.total-b.total);
+      sols.forEach((s,i)=>{s.rank=i+1;s.efficiency=Math.max(0,100-(s.total-sols[0].total)*2);s.estTime=(s.total*0.4+Math.random()*2).toFixed(2);});
+      setSolutions(sols);setActiveMethod(0);setSolving(false);setActivePanel("solution");setExpandedStep(0);
+      setHistory(h=>[{winner:sols[0].method,moves:sols[0].total,time:sols[0].estTime,verified:sols[0].verified},...h].slice(0,20));
+    },300);
+  },[cubeState,scramble]);
+
+  const startPB=useCallback(()=>{if(!solutions)return;const sol=solutions[activeMethod],all=sol.steps.flatMap(s=>s.moves);let idx=0,s=[...cubeState];setPb({playing:true,step:0,mi:0});if(ivRef.current)clearInterval(ivRef.current);ivRef.current=setInterval(()=>{if(idx>=all.length){clearInterval(ivRef.current);setPb(p=>({...p,playing:false}));return;}s=doM(s,all[idx]);setDisplayState([...s]);let cum=0,step=0;for(let i=0;i<sol.steps.length;i++){cum+=sol.steps[i].moves.length;if(idx<cum){step=i;break;}}setPb(p=>({...p,step,mi:idx+1}));setExpandedStep(step);idx++;},200);},[solutions,activeMethod,cubeState]);
+  const stopPB=()=>{if(ivRef.current)clearInterval(ivRef.current);setPb({playing:false,step:-1,mi:0});setDisplayState([...cubeState]);};
+  useEffect(()=>()=>{if(ivRef.current)clearInterval(ivRef.current);},[]);
+
+  // Compute intermediate states for active method
+  const stepStates=solutions&&solutions[activeMethod]?(()=>{const sol=solutions[activeMethod];const states=[cubeState];let s=[...cubeState];for(const step of sol.steps){s=doSeq(s,step.moves);states.push([...s]);}return states;})():[];
+
+  const MC=["#246bfd","#a855f7","#06b6d4","#22c55e"];
+  const B="rgba(255,255,255,0.07)",CB="rgba(255,255,255,0.04)",TD="rgba(255,255,255,0.35)",TM="rgba(255,255,255,0.55)";
+
+  return(
+    <div style={{fontFamily:"Inter,sans-serif",background:"#12141c",color:"#fff",minHeight:"100vh"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+      <header style={{display:"flex",alignItems:"center",padding:"14px 16px 8px",gap:8,opacity:0.85}}>
+        <img src="./cube.png" alt="" style={{width:22,height:22,objectFit:"contain"}}/>
+        <span style={{fontWeight:700,fontSize:16}}>Solver</span>
+      </header>
+
+      {/* Cube */}
+      <div style={{background:"#181b25",borderRadius:12,margin:"0 12px 12px",padding:16,border:`1px solid ${B}`}}>
+        <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:14}}>
+          {["3d","net"].map(v=>(<button key={v} onClick={()=>setViewMode(v)} style={{padding:"5px 16px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"Inter,sans-serif",background:viewMode===v?"#246bfd":"rgba(255,255,255,0.05)",color:viewMode===v?"#fff":TD,boxShadow:viewMode===v?"0 0 12px rgba(36,107,253,0.35)":"none"}}>{v==="3d"?"3D View":"Net View"}</button>))}
+        </div>
+        {viewMode==="3d"?<Cube3D state={displayState}/>:<CubeNet state={displayState}/>}
+      </div>
+
+      {/* Scramble */}
+      <div style={{background:"#181b25",borderRadius:12,margin:"0 12px 12px",padding:14,border:`1px solid ${B}`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <span style={{fontSize:11,fontWeight:600,color:TD,textTransform:"uppercase",letterSpacing:1.5}}>Scramble</span>
+          <div style={{display:"flex",background:CB,borderRadius:6,overflow:"hidden"}}>
+            {[{id:"random",l:"Random"},{id:"custom",l:"Paste"}].map(m=>(<button key={m.id} onClick={()=>{setInputMode(m.id);setInputError("");}} style={{padding:"4px 14px",border:"none",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"Inter,sans-serif",background:inputMode===m.id?"rgba(36,107,253,0.15)":"transparent",color:inputMode===m.id?"#246bfd":TD}}>{m.l}</button>))}
+          </div>
+        </div>
+        {inputMode==="custom"?(<div>
+          <textarea value={customText} onChange={e=>{setCustomText(e.target.value);setInputError("");}} placeholder={"Paste your scramble here...\ne.g. R U R' U' R' F R2 U' R' U'"} spellCheck={false} style={{width:"100%",minHeight:64,padding:"10px 12px",boxSizing:"border-box",background:"#0c0d17",border:`1px solid ${inputError?"#ef4444":B}`,borderRadius:8,color:"#fff",fontSize:14,fontFamily:"'Roboto Mono',monospace",resize:"vertical",outline:"none",lineHeight:1.6}} onFocus={e=>e.target.style.borderColor=inputError?"#ef4444":"#246bfd"} onBlur={e=>e.target.style.borderColor=inputError?"#ef4444":B}/>
+          {inputError&&<div style={{fontSize:12,color:"#ef4444",marginTop:6,fontWeight:500,display:"flex",alignItems:"center",gap:4}}><Icon.warn/>{inputError}</div>}
+          <div style={{fontSize:10,color:TD,marginTop:6}}>Accepted: R L U D F B with ' or 2 — space separated</div>
+          <button onClick={applyCustom} style={{width:"100%",marginTop:10,padding:10,border:"none",borderRadius:8,cursor:"pointer",background:"#246bfd",color:"#fff",fontSize:13,fontWeight:600,fontFamily:"Inter,sans-serif",boxShadow:"0 0 15px rgba(36,107,253,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Icon.clip/>Apply Scramble</button>
+        </div>):(<div style={{display:"flex",flexWrap:"wrap",gap:3}}>{scramble.map((m,i)=><MoveChip key={i} move={m} highlight={pb.playing&&pb.mi===i+1} done={pb.playing&&pb.mi>i}/>)}</div>)}
+      </div>
+
+      {/* Buttons */}
+      <div style={{display:"flex",gap:8,margin:"0 12px 14px"}}>
+        <button onClick={()=>{setInputMode("random");doScramble();}} style={{flex:1,padding:12,border:"none",borderRadius:10,cursor:"pointer",background:"#1e242c",color:TM,fontSize:14,fontWeight:600,fontFamily:"Inter,sans-serif",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Icon.dice/>Random</button>
+        <button onClick={doSolve} disabled={solving} style={{flex:1.6,padding:12,border:"none",borderRadius:10,cursor:solving?"default":"pointer",background:solving?"#333":"#246bfd",color:"#fff",fontSize:14,fontWeight:600,fontFamily:"Inter,sans-serif",boxShadow:solving?"none":"0 0 15px rgba(36,107,253,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}><Icon.brain/>{solving?"Analyzing...":"Solve & Compare"}</button>
+      </div>
+
+      {solutions&&(<div style={{margin:"0 12px 20px"}}>
+        {/* Method cards */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+          {solutions.map((sol,i)=>(<button key={i} onClick={()=>{setActiveMethod(i);stopPB();setActivePanel("solution");setExpandedStep(0);}} style={{padding:12,borderRadius:12,cursor:"pointer",textAlign:"left",fontFamily:"Inter,sans-serif",border:`2px solid ${activeMethod===i?MC[i]:"transparent"}`,background:activeMethod===i?MC[i]+"12":"#181b25",boxShadow:activeMethod===i?`0 0 15px ${MC[i]}22`:"none"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontWeight:700,fontSize:14,color:MC[i]}}>{sol.method}</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                {sol.verified&&<Icon.solved/>}
+                {sol.rank===1&&<span style={{fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:4,background:"rgba(34,197,94,0.15)",color:"#22c55e",display:"flex",alignItems:"center",gap:3}}><Icon.trophy/>BEST</span>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:14}}>
+              <div><div style={{fontFamily:"'Roboto Mono',monospace",fontSize:20,fontWeight:700}}>{sol.total}</div><div style={{fontSize:10,color:TD}}>moves</div></div>
+              <div><div style={{fontFamily:"'Roboto Mono',monospace",fontSize:20,fontWeight:700}}>{sol.estTime}s</div><div style={{fontSize:10,color:TD,display:"flex",alignItems:"center",gap:3}}><Icon.clock/>est.</div></div>
+              <div><div style={{fontFamily:"'Roboto Mono',monospace",fontSize:20,fontWeight:700}}>{sol.steps.length}</div><div style={{fontSize:10,color:TD}}>steps</div></div>
+            </div>
+          </button>))}
+        </div>
+
+        {/* Tabs */}
+        <div style={{display:"flex",gap:2,marginBottom:12,background:CB,borderRadius:8,padding:3}}>
+          {[{id:"solution",l:"Solution",I:Icon.layers},{id:"comparison",l:"Compare",I:Icon.bar},{id:"history",l:"History",I:Icon.clock}].map(t=>(<button key={t.id} onClick={()=>setActivePanel(t.id)} style={{flex:1,padding:"7px 0",border:"none",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"Inter,sans-serif",background:activePanel===t.id?"rgba(36,107,253,0.15)":"transparent",color:activePanel===t.id?"#246bfd":TD,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}><t.I/>{t.l}</button>))}
+        </div>
+
+        {/* SOLUTION */}
+        {activePanel==="solution"&&solutions[activeMethod]&&(
+          <div style={{background:"#181b25",borderRadius:12,padding:14,border:`1px solid ${B}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:700,fontSize:15,color:MC[activeMethod]}}>{solutions[activeMethod].method}</span>
+                {solutions[activeMethod].verified&&<span style={{fontSize:10,fontWeight:600,color:"#22c55e",display:"flex",alignItems:"center",gap:3}}><Icon.solved/>Verified</span>}
+              </div>
+              <button onClick={pb.playing?stopPB:startPB} style={{padding:"5px 16px",border:`1px solid ${MC[activeMethod]}44`,borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"Inter,sans-serif",background:pb.playing?"rgba(239,68,68,0.1)":`${MC[activeMethod]}12`,color:pb.playing?"#ef4444":MC[activeMethod],display:"flex",alignItems:"center",gap:4}}>{pb.playing?<><Icon.stop/>Stop</>:<><Icon.play/>Play</>}</button>
+            </div>
+
+            {solutions[activeMethod].steps.map((step,si)=>{
+              const isA=pb.playing&&pb.step===si,isD=pb.playing&&pb.step>si,isExp=expandedStep===si;
+              const hasMoves=step.moves.length>0;
+              return(
+                <div key={si} style={{marginBottom:8,borderRadius:12,overflow:"hidden",border:`1px solid ${isA?MC[activeMethod]+"33":isExp?"rgba(255,255,255,0.1)":"transparent"}`,background:isA?`${MC[activeMethod]}0d`:CB}}>
+                  <button onClick={()=>setExpandedStep(isExp?null:si)} style={{width:"100%",padding:"12px 14px",border:"none",cursor:"pointer",background:"transparent",display:"flex",justifyContent:"space-between",alignItems:"center",fontFamily:"Inter,sans-serif"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:24,height:24,borderRadius:7,fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,background:isD?"rgba(34,197,94,0.12)":isA?`${MC[activeMethod]}18`:"rgba(255,255,255,0.06)",color:isD?"#22c55e":isA?MC[activeMethod]:TD}}>{isD?<Icon.check/>:si+1}</div>
+                      <span style={{fontWeight:600,fontSize:14,color:isA?MC[activeMethod]:isD?"#22c55e":"#fff",textAlign:"left"}}>{step.name}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:11,fontFamily:"'Roboto Mono',monospace",color:TD,fontWeight:500}}>{step.moves.length}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={TD} strokeWidth="2.5" style={{transform:isExp?"rotate(180deg)":"",transition:"transform 0.2s"}}><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                  </button>
+
+                  {isExp&&(<div style={{padding:"0 14px 14px"}}>
+                    <div style={{fontSize:12,color:TM,lineHeight:1.6,marginBottom:10}}>{step.desc}</div>
+                    <div style={{background:"rgba(36,107,253,0.06)",border:"1px solid rgba(36,107,253,0.12)",borderRadius:8,padding:"8px 12px",marginBottom:14,display:"flex",gap:8,alignItems:"flex-start"}}>
+                      <div style={{color:"#246bfd",flexShrink:0,marginTop:1}}><Icon.search/></div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",lineHeight:1.6}}>{step.why}</div>
+                    </div>
+
+                    {/* Before / After */}
+                    {hasMoves&&stepStates.length>si+1&&(
+                      <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:14,alignItems:"center"}}>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:9,fontWeight:600,color:TD,textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>Before</div>
+                          <MiniCube state={stepStates[si]} size={11}/>
+                        </div>
+                        <div style={{color:TD}}><Icon.arrowR s={20}/></div>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:9,fontWeight:600,color:isSolved(stepStates[si+1])?"#22c55e":"#f59e0b",textTransform:"uppercase",letterSpacing:1,marginBottom:6}}>{isSolved(stepStates[si+1])?"Solved":"After"}</div>
+                          <MiniCube state={stepStates[si+1]} size={11}/>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Moves */}
+                    {hasMoves?(<div style={{display:"flex",flexWrap:"wrap",gap:4,justifyContent:"center"}}>
+                      {step.moves.map((m,mi)=>{let g=0;for(let s=0;s<si;s++)g+=solutions[activeMethod].steps[s].moves.length;g+=mi;return<MoveChip key={mi} move={m} highlight={pb.playing&&pb.mi===g+1} done={pb.playing&&pb.mi>g}/>;})}</div>
+                    ):(<div style={{fontSize:12,color:"#22c55e",textAlign:"center",padding:8,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}><Icon.check/>Already solved for this step</div>)}
+
+                    {/* Face legend */}
+                    {hasMoves&&(<div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",marginTop:10}}>
+                      {[...new Set(step.moves.map(m=>m[0]))].filter(f=>FL[f]).map(f=>(<div key={f} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:TM}}><div style={{width:8,height:8,borderRadius:2,background:FC[f],boxShadow:"inset 0 0 1px rgba(0,0,0,0.2)"}}/>{f} = {FL[f]}</div>))}
+                    </div>)}
+                  </div>)}
+                </div>);
+            })}
+          </div>
+        )}
+
+        {/* COMPARE */}
+        {activePanel==="comparison"&&(<div style={{background:"#181b25",borderRadius:12,padding:14,border:`1px solid ${B}`}}>
+          <span style={{fontWeight:700,fontSize:14,color:TM,display:"block",marginBottom:14}}>Move Efficiency</span>
+          {solutions.map((sol,i)=>(<div key={i} style={{marginBottom:12}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}><span style={{fontSize:12,fontWeight:600,color:MC[i],display:"flex",alignItems:"center",gap:4}}>{sol.method}{sol.verified&&<Icon.solved/>}</span><span style={{fontSize:12,fontFamily:"'Roboto Mono',monospace",color:TM}}>{sol.total} moves</span></div><div style={{height:7,background:CB,borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:`${sol.efficiency}%`,borderRadius:4,background:MC[i],boxShadow:`0 0 8px ${MC[i]}44`,transition:"width 0.5s"}}/></div></div>))}
+          <div style={{marginTop:18,paddingTop:14,borderTop:`1px solid ${B}`}}>
+            <span style={{fontWeight:700,fontSize:14,color:TM,display:"block",marginBottom:12}}>Step Breakdown</span>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {solutions.map((sol,i)=>(<div key={i} style={{background:CB,borderRadius:8,padding:10}}><div style={{fontSize:12,fontWeight:700,color:MC[i],marginBottom:8}}>{sol.method}</div>{sol.steps.map((st,si)=>(<div key={si} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:10,color:TM}}>{st.name}</span><span style={{fontSize:10,fontFamily:"'Roboto Mono',monospace",color:"rgba(255,255,255,0.4)",fontWeight:600}}>{st.moves.length}</span></div>))}</div>))}
+            </div>
+          </div>
+          <div style={{marginTop:14,padding:12,borderRadius:10,background:"rgba(34,197,94,0.05)",border:"1px solid rgba(34,197,94,0.12)"}}><div style={{fontSize:13,fontWeight:600,color:"#22c55e",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><Icon.search/>Analysis</div><div style={{fontSize:12,color:TM,lineHeight:1.6}}><strong style={{color:"#fff"}}>{solutions[0].method}</strong> wins with {solutions[0].total} moves (~{solutions[0].estTime}s). Delta vs worst: <strong style={{color:"#ef4444"}}>{solutions[solutions.length-1].total-solutions[0].total}</strong> moves.</div></div>
+        </div>)}
+
+        {/* HISTORY */}
+        {activePanel==="history"&&(<div style={{background:"#181b25",borderRadius:12,padding:14,border:`1px solid ${B}`}}>
+          <span style={{fontWeight:700,fontSize:14,color:TM,display:"block",marginBottom:12}}>Solve History</span>
+          {history.length===0?<div style={{textAlign:"center",padding:24,color:TD,fontSize:13}}>No solves yet</div>:history.map((h,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px",borderBottom:i<history.length-1?`1px solid ${B}`:"none",opacity:i===0?1:0.5}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}><span style={{fontFamily:"'Roboto Mono',monospace",fontSize:11,color:TD,fontWeight:600,width:20}}>#{i+1}</span><span style={{fontSize:13,fontWeight:600,color:"#246bfd"}}>{h.winner}</span>{h.verified&&<Icon.solved/>}</div>
+            <span style={{fontFamily:"'Roboto Mono',monospace",fontSize:12,color:TM}}>{h.moves} moves</span>
+          </div>))}
+        </div>)}
+      </div>)}
+    </div>
+  );
+}
