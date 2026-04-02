@@ -538,21 +538,19 @@
                         const merged = mergeSolves(currentSolves, json.solves);
                         setSolves(merged);
                         setLastSyncTime(Date.now());
-                        setSyncStatus('success');
-                        setCloudStatus('success');
-                        setTimeout(() => { setSyncStatus('idle'); setCloudStatus('idle'); }, 2000);
+                        setSyncStatus('idle');
                         isSyncingRef.current = false;
                         return merged;
                     } else {
-                        setSyncStatus('error');
+                        setSyncStatus('idle');
                         setCloudStatus('error');
-                        setTimeout(() => { setSyncStatus('idle'); setCloudStatus('idle'); }, 2000);
+                        setTimeout(() => setCloudStatus('idle'), 2000);
                     }
                 } catch(e) {
                     console.error('Sync failed:', e);
-                    setSyncStatus('error');
+                    setSyncStatus('idle');
                     setCloudStatus('error');
-                    setTimeout(() => { setSyncStatus('idle'); setCloudStatus('idle'); }, 2000);
+                    setTimeout(() => setCloudStatus('idle'), 2000);
                 }
 
                 isSyncingRef.current = false;
@@ -744,11 +742,14 @@
                         body: JSON.stringify({ action: 'delete', timestamp, userId }),
                     });
                     const json = await res.json();
-                    setCloudStatus(json.status === 'success' ? 'success' : 'error');
+                    if (json.status !== 'success') {
+                        setCloudStatus('error');
+                        setTimeout(() => setCloudStatus('idle'), 1500);
+                    }
                 } catch(e) {
                     setCloudStatus('error');
+                    setTimeout(() => setCloudStatus('idle'), 1500);
                 }
-                setTimeout(() => setCloudStatus('idle'), 1500);
             }, [userId]);
 
             const stopTimer = useCallback(() => {
@@ -1022,37 +1023,7 @@
                         <div className="flex gap-2 text-white font-bold text-lg items-center opacity-80">
                             <CubeIcon /> <span>3x3</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            {/* Sync status + button */}
-                            <button
-                                onClick={handleManualSync}
-                                className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded transition-all ${
-                                    syncStatus === 'syncing' ? 'text-blue-400 sync-pulse' :
-                                    syncStatus === 'success' ? 'text-green-400' :
-                                    syncStatus === 'error' ? 'text-red-400' :
-                                    'text-gray-500 hover:text-white'
-                                }`}
-                                title="Sync now"
-                            >
-                                <SyncIcon className={syncStatus === 'syncing' ? 'animate-spin' : ''} />
-                                <span className="hidden sm:inline">
-                                    {syncStatus === 'syncing' ? 'Syncing...' :
-                                     syncStatus === 'success' ? 'Synced' :
-                                     syncStatus === 'error' ? 'Sync failed' :
-                                     'Sync'}
-                                </span>
-                            </button>
-                            {/* User ID badge */}
-                            <button
-                                id="userIdLabel"
-                                onClick={handleCopyUserId}
-                                className="flex items-center gap-1.5 text-[11px] font-mono text-gray-500 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded transition-all"
-                                title={`Click to copy User ID: ${userId}`}
-                            >
-                                <LinkIcon />
-                                <span className="max-w-[100px] truncate">{userId.replace('cuboid_', '').slice(0, 8)}…</span>
-                            </button>
-                        </div>
+
                     </header>
 
                     <main className="flex-1 flex flex-col items-center justify-center py-4 px-4 min-h-[35vh]">
@@ -1101,7 +1072,21 @@
                                 {scrambleMode && (
                                     <>
                                         <button onClick={() => setShowArrows(!showArrows)} className={`transition-colors ${showArrows ? 'text-primary' : 'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
-                                        <CloudIcon style={{ transition: 'color 0.2s, filter 0.2s', color: cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)', filter: cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none', pointerEvents: 'none', flexShrink: 0 }} />
+                                        <div className="relative group/cloud flex-shrink-0">
+                                            <button
+                                                onClick={handleManualSync}
+                                                className={`transition-all cursor-pointer ${syncStatus === 'syncing' ? 'sync-pulse' : ''}`}
+                                                style={{
+                                                    color: syncStatus === 'syncing' ? '#246bfd' : cloudStatus === 'success' ? '#22c55e' : cloudStatus === 'error' ? '#ef4444' : 'rgb(107,114,128)',
+                                                    filter: syncStatus === 'syncing' ? 'drop-shadow(0 0 6px #246bfd)' : cloudStatus === 'success' ? 'drop-shadow(0 0 6px #22c55e)' : cloudStatus === 'error' ? 'drop-shadow(0 0 6px #ef4444)' : 'none',
+                                                }}
+                                            >
+                                                <CloudIcon style={{ color: 'inherit', filter: 'inherit' }} />
+                                            </button>
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-[#0c0d17] border border-white/10 rounded-lg text-[10px] font-mono text-gray-400 whitespace-nowrap opacity-0 group-hover/cloud:opacity-100 transition-opacity pointer-events-none shadow-xl">
+                                                {userId.replace('cuboid_', '').slice(0, 12)}
+                                            </div>
+                                        </div>
                                         <button onClick={() => setIsLocked(!isLocked)} className={`transition-colors ${isLocked ? 'text-primary' : 'hover:text-white'}`} title="Lock Scramble">
                                             {isLocked ? <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect width="256" height="256" fill="none"></rect><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88V52a36,36,0,0,1,72,0V88" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>
                                             : <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 256 256"><rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></rect><path d="M92,88v-40a36,36,0,0,1,72,0v16" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="24"></path><circle cx="128" cy="152" r="16"></circle></svg>}
