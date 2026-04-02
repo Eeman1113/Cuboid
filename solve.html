@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Cube Solver</title>
+<link rel="icon" type="image/png" href="./cube.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -390,7 +391,7 @@ return states;
 // ─── RENDER ──────────────────────────────────────────────────
 function render(){
 const app=document.getElementById("app");
-let html=`<header><span style="font-size:22px">🧊</span><span>Solver</span></header>`;
+let html=`<header><img src="./cube.png" alt="" style="width:22px;height:22px;object-fit:contain"/><span>Solver</span></header>`;
 
 // Cube panel
 html+=`<div class="cube-panel"><div class="view-btns">`;
