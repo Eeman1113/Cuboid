@@ -463,6 +463,7 @@
             const [syncStatus, setSyncStatus] = useState('idle'); // idle | syncing | success | error
             const [lastSyncTime, setLastSyncTime] = useState(0);
             const isSyncingRef = useRef(false);
+            const pendingDeletesRef = useRef(new Set()); // timestamps queued for server deletion
 
             const [solves, setSolves] = useState(() => {
                 try {
@@ -535,7 +536,11 @@
                     const json = await res.json();
 
                     if (json.status === 'success' && json.solves) {
-                        const merged = mergeSolves(currentSolves, json.solves);
+                        let merged = mergeSolves(currentSolves, json.solves);
+                        // Filter out any solves with pending server-side deletes
+                        if (pendingDeletesRef.current.size > 0) {
+                            merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
+                        }
                         setSolves(merged);
                         setLastSyncTime(Date.now());
                         setSyncStatus('idle');
@@ -742,11 +747,14 @@
                         body: JSON.stringify({ action: 'delete', timestamp, userId }),
                     });
                     const json = await res.json();
+                    // Server confirmed delete — safe to stop guarding
+                    pendingDeletesRef.current.delete(String(timestamp));
                     if (json.status !== 'success') {
                         setCloudStatus('error');
                         setTimeout(() => setCloudStatus('idle'), 1500);
                     }
                 } catch(e) {
+                    pendingDeletesRef.current.delete(String(timestamp));
                     setCloudStatus('error');
                     setTimeout(() => setCloudStatus('idle'), 1500);
                 }
@@ -791,7 +799,10 @@
                     return prev.filter(s => s.id !== id);
                 });
                 setTimeout(() => {
-                    if (timestampToDelete) deleteFromSheets(timestampToDelete);
+                    if (timestampToDelete) {
+                        pendingDeletesRef.current.add(String(timestampToDelete));
+                        deleteFromSheets(timestampToDelete);
+                    }
                 }, 0);
             }, [deleteFromSheets]);
 
