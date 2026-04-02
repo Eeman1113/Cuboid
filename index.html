@@ -491,7 +491,7 @@
                                 <button onClick={toggleScrambleMode} className={`transition-colors ${!scrambleMode?'text-red-500':'hover:text-white'}`} title={scrambleMode?"Turn Off Scramble":"Turn On Scramble"}><BanIcon /></button>
                                 {scrambleMode && <>
                                     <button onClick={()=>setShowArrows(!showArrows)} className={`transition-colors ${showArrows?'text-primary':'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
-                                    <div className="relative group/cloud flex-shrink-0">
+                                    <div className="relative group/cloud flex-shrink-0 flex items-center">
                                         <button onClick={handleManualSync} className={`transition-all cursor-pointer ${syncStatus==='syncing'?'sync-pulse':''}`} style={{ color:syncStatus==='syncing'?'#246bfd':cloudStatus==='success'?'#22c55e':cloudStatus==='error'?'#ef4444':'rgb(107,114,128)', filter:syncStatus==='syncing'?'drop-shadow(0 0 6px #246bfd)':cloudStatus==='success'?'drop-shadow(0 0 6px #22c55e)':cloudStatus==='error'?'drop-shadow(0 0 6px #ef4444)':'none' }} title={userId?'Sync now':'Not synced — do a solve or import'}>
                                             {userId ? <CloudIcon style={{color:'inherit',filter:'inherit'}}/> : <CloudOffIcon style={{color:'inherit',filter:'inherit'}}/>}
                                         </button>
