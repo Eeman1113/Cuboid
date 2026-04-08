@@ -233,6 +233,7 @@
             const [syncStatus, setSyncStatus] = useState('idle');
             const isSyncingRef = useRef(false);
             const pendingDeletesRef = useRef(new Set());
+            const pendingPenaltiesRef = useRef(new Map());
             const userIdRef = useRef(userId);
             useEffect(() => { userIdRef.current = userId; }, [userId]);
             const solvesRef = useRef(solves);
@@ -273,9 +274,19 @@
                             let merged = mergeSolves(prev, serverData, deletedData);
                             if (pendingDeletesRef.current.size > 0) {
                                 merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
-                                // Only clear pending once server confirms item is gone
                                 const serverTs = new Set(serverData.map(s => String(s.timestamp)));
                                 pendingDeletesRef.current.forEach(ts => { if (!serverTs.has(ts)) pendingDeletesRef.current.delete(ts); });
+                            }
+                            if (pendingPenaltiesRef.current.size > 0) {
+                                const serverByTs = new Map(serverData.map(s => [String(s.timestamp), s]));
+                                merged = merged.map(s => {
+                                    const p = pendingPenaltiesRef.current.get(String(s.timestamp));
+                                    return p !== undefined ? {...s, penalty: p} : s;
+                                });
+                                pendingPenaltiesRef.current.forEach((pen, ts) => {
+                                    const sv = serverByTs.get(ts);
+                                    if (sv && String(sv.penalty || '') === pen) pendingPenaltiesRef.current.delete(ts);
+                                });
                             }
                             return merged;
                         });
@@ -456,10 +467,9 @@
                     });
                     return updated;
                 });
-                setTimeout(() => {
-                    const uid = userIdRef.current;
-                    if (uid && ts) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:ts,penalty:newPenalty,userId:uid})}).catch(()=>{});
-                }, 0);
+                if (ts) pendingPenaltiesRef.current.set(String(ts), newPenalty);
+                const uid = userIdRef.current;
+                if (uid && ts) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:ts,penalty:newPenalty,userId:uid})}).catch(()=>{});
             }, []);
 
             const calcStatValue = useCallback((config,allSolves) => {
