@@ -460,19 +460,16 @@
             const handleNewScramble = () => setScramble(generateScramble());
 
             const togglePenalty = useCallback((id,type) => {
-                let newPenalty = null, ts = null;
-                setSolves(prev => {
-                    const updated = prev.map(s => {
-                        if (s.id !== id) return s;
-                        newPenalty = s.penalty === type ? '' : type;
-                        ts = s.timestamp;
-                        return {...s, penalty: newPenalty};
-                    });
-                    return updated;
-                });
-                if (ts) pendingPenaltiesRef.current.set(String(ts), newPenalty);
-                const uid = userIdRef.current;
-                if (uid && ts) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:ts,penalty:newPenalty,userId:uid})}).catch(()=>{});
+                setSolves(prev => prev.map(s => {
+                    if (s.id !== id) return s;
+                    const newPenalty = s.penalty === type ? '' : type;
+                    if (s.timestamp) {
+                        pendingPenaltiesRef.current.set(String(s.timestamp), newPenalty);
+                        const uid = userIdRef.current;
+                        if (uid) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:s.timestamp,penalty:newPenalty,userId:uid})}).catch(()=>{});
+                    }
+                    return {...s, penalty: newPenalty};
+                }));
             }, []);
 
             const calcStatValue = useCallback((config,allSolves) => {
