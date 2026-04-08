@@ -68,7 +68,7 @@
         const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
         const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxWYpcJ-_6Vy6rqyyEqpV9zrSEyZAfbKT8ptCS8YuFF630CZBJv3aioIW52VgFAp-Au/exec';
-        const SYNC_INTERVAL_MS = 5000;
+        const SYNC_INTERVAL_MS = 15000;
 
         // ─── User ID helpers — NEVER auto-create on read ──────────────────────
         function getUserId() { return localStorage.getItem('cuboid-user-id') || null; }
@@ -83,10 +83,10 @@
 
         const MOVES = ["U","D","L","R","F","B"], MODIFIERS = ["","'","2"];
         function generateScramble(length = 20) {
-            let scramble = [], lastMove = "";
+            let scramble = [], lastMove = "", secondLastMove = "";
             for (let i = 0; i < length; i++) {
-                let move; do { move = MOVES[Math.floor(Math.random() * MOVES.length)]; } while (move === lastMove || isOpposite(move, lastMove));
-                scramble.push(move + MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)]); lastMove = move;
+                let move; do { move = MOVES[Math.floor(Math.random() * MOVES.length)]; } while (move === lastMove || (move === secondLastMove && isOpposite(move, lastMove)));
+                scramble.push(move + MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)]); secondLastMove = lastMove; lastMove = move;
             }
             return scramble.join(" ");
         }
@@ -116,24 +116,29 @@
             if(penalty==='+2')s+='+'; return s;
         }
         function getActualTime(s) { if(s.penalty==='DNF')return Infinity; if(s.penalty==='+2')return s.time+2000; return s.time; }
+        function calculateAverageMs(solves,count) {
+            if(solves.length<count)return null; const recent=solves.slice(0,count).map(getActualTime); if(recent.filter(t=>t===Infinity).length>1)return Infinity;
+            recent.sort((a,b)=>a-b); const trimmed=recent.slice(1,-1); if(trimmed.includes(Infinity))return Infinity;
+            return trimmed.reduce((a,v)=>a+v,0)/trimmed.length;
+        }
         function calculateAverage(solves,count) {
-            if(solves.length<count)return"-"; const recent=solves.slice(0,count).map(getActualTime); if(recent.filter(t=>t===Infinity).length>1)return"DNF";
-            recent.sort((a,b)=>a-b); const trimmed=recent.slice(1,-1); if(trimmed.includes(Infinity))return"DNF";
-            return formatTime(trimmed.reduce((a,v)=>a+v,0)/trimmed.length);
+            const ms=calculateAverageMs(solves,count); if(ms===null)return"-"; if(ms===Infinity)return"DNF"; return formatTime(ms);
         }
         // Server-authoritative merge: server data wins for existing entries,
         // local-only solves (not yet on server) are preserved
         function mergeSolves(localSolves, serverSolves, deletedTimestamps) {
             const deletedSet = new Set((deletedTimestamps || []).map(String));
-            const serverByTs = new Map();
-            serverSolves.forEach(s => { if(s.timestamp) serverByTs.set(String(s.timestamp), s); });
+            const localByTs = new Map();
+            localSolves.forEach(s => { if(s.timestamp) localByTs.set(String(s.timestamp), s); });
 
             const result = new Map();
 
-            // Add all server solves (source of truth)
+            // Add all server solves, preserving local IDs where they exist
             serverSolves.forEach(s => {
                 if (s.timestamp && !deletedSet.has(String(s.timestamp))) {
-                    result.set(String(s.timestamp), { ...s, id: makeId() });
+                    const key = String(s.timestamp);
+                    const local = localByTs.get(key);
+                    result.set(key, { ...s, id: local ? local.id : (s.id || makeId()) });
                 }
             });
 
@@ -230,6 +235,8 @@
             const pendingDeletesRef = useRef(new Set());
             const userIdRef = useRef(userId);
             useEffect(() => { userIdRef.current = userId; }, [userId]);
+            const solvesRef = useRef(solves);
+            useEffect(() => { solvesRef.current = solves; }, [solves]);
 
             const [solves, setSolves] = useState(() => { try { const s=localStorage.getItem('cuboid-solves'); return s?migrateSolves(JSON.parse(s)):[]; } catch(e){return[];} });
             const [statsConfig, setStatsConfig] = useState(() => { try { const s=localStorage.getItem('cuboid-stats'); return s?JSON.parse(s):DEFAULT_STATS_CONFIG; } catch(e){return DEFAULT_STATS_CONFIG;} });
@@ -261,9 +268,13 @@
                     const res = await fetch(SHEETS_URL, { method:'POST', body:JSON.stringify({ userId:uid, action:'sync', solves:currentSolves.map(s=>({id:s.id,time:s.time,penalty:s.penalty||'',scramble:s.scramble||'',timestamp:s.timestamp})) }) });
                     const json = await res.json();
                     if (json.status==='success' && json.solves) {
-                        let merged = mergeSolves(currentSolves, json.solves, json.deleted || []);
-                        if (pendingDeletesRef.current.size > 0) merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
-                        setSolves(merged); setSyncStatus('idle'); isSyncingRef.current = false; return merged;
+                        const serverData = json.solves, deletedData = json.deleted || [];
+                        setSolves(prev => {
+                            let merged = mergeSolves(prev, serverData, deletedData);
+                            if (pendingDeletesRef.current.size > 0) merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
+                            return merged;
+                        });
+                        setSyncStatus('idle'); isSyncingRef.current = false; return;
                     } else { setSyncStatus('idle'); setCloudStatus('error'); setTimeout(()=>setCloudStatus('idle'),2000); }
                 } catch(e) { console.error('Sync failed:',e); setSyncStatus('idle'); setCloudStatus('error'); setTimeout(()=>setCloudStatus('idle'),2000); }
                 isSyncingRef.current = false; return currentSolves;
@@ -274,10 +285,10 @@
             useEffect(() => { if(!initialSyncDone.current){initialSyncDone.current=true; if(userId)performSync(solves,userId);} }, []);
 
             // Periodic sync
-            useEffect(() => { const iv=setInterval(()=>{ if(document.visibilityState!=='visible')return; const uid=userIdRef.current; if(!uid)return; setSolves(c=>{performSync(c,uid,true);return c;}); },SYNC_INTERVAL_MS); return()=>clearInterval(iv); }, [performSync]);
+            useEffect(() => { const iv=setInterval(()=>{ if(document.visibilityState!=='visible')return; const uid=userIdRef.current; if(!uid)return; performSync(solvesRef.current,uid,true); },SYNC_INTERVAL_MS); return()=>clearInterval(iv); }, [performSync]);
 
             // Sync on tab focus
-            useEffect(() => { const h=()=>{ if(document.visibilityState==='visible'){const uid=userIdRef.current;if(!uid)return;setSolves(c=>{performSync(c,uid,true);return c;});} }; document.addEventListener('visibilitychange',h); return()=>document.removeEventListener('visibilitychange',h); }, [performSync]);
+            useEffect(() => { const h=()=>{ if(document.visibilityState==='visible'){const uid=userIdRef.current;if(!uid)return;performSync(solvesRef.current,uid,true);} }; document.addEventListener('visibilitychange',h); return()=>document.removeEventListener('visibilitychange',h); }, [performSync]);
 
             const handleManualSync = useCallback(() => { const uid=userIdRef.current; if(!uid)return; performSync(solves,uid); }, [performSync,solves]);
 
@@ -370,6 +381,9 @@
             useEffect(() => { localStorage.setItem('cuboid-is-locked', JSON.stringify(isLocked)); }, [isLocked]);
             useEffect(() => { localStorage.setItem('cuboid-current-scramble', scramble); }, [scramble]);
 
+            // Cross-tab sync: pick up changes from other tabs via storage events
+            useEffect(() => { const h=(e)=>{ if(e.key==='cuboid-solves'&&e.newValue){try{setSolves(JSON.parse(e.newValue));}catch(err){}} }; window.addEventListener('storage',h); return()=>window.removeEventListener('storage',h); }, []);
+
             useEffect(() => { if(scrambleMode&&scramble==="")setScramble(generateScramble()); }, []);
             useEffect(() => { if(scrambleMode&&scramble)setCubeState(getScrambledState(scramble)); else setCubeState(null); }, [scramble,scrambleMode]);
             const toggleScrambleMode = useCallback(() => { if(!scrambleMode){setScramble(generateScramble());setScrambleMode(true);}else{setScramble("");setScrambleMode(false);} }, [scrambleMode]);
@@ -403,8 +417,11 @@
             }, [scramble,isLocked,scrambleMode,syncSingleSolve]);
 
             const deleteSolve = useCallback((id) => {
-                let ts=null; setSolves(prev=>{const t=prev.find(s=>s.id===id);if(t)ts=t.timestamp;return prev.filter(s=>s.id!==id);});
-                setTimeout(()=>{ if(ts){pendingDeletesRef.current.add(String(ts));deleteFromSheets(ts,userIdRef.current);} },0);
+                const solve = solvesRef.current.find(s => s.id === id);
+                const ts = solve ? solve.timestamp : null;
+                if (ts) pendingDeletesRef.current.add(String(ts));
+                setSolves(prev => prev.filter(s => s.id !== id));
+                if (ts) deleteFromSheets(ts, userIdRef.current);
             }, [deleteFromSheets]);
 
             const removeDuplicates = useCallback(() => { setSolves(prev=>{ const sT=new Set(),sF=new Set(); return prev.filter(s=>{ const k=String(s.timestamp),fp=solveFingerprint(s); if((s.timestamp&&sT.has(k))||sF.has(fp))return false; if(s.timestamp)sT.add(k);sF.add(fp);return true; }); }); }, []);
@@ -424,12 +441,12 @@
             const handleNewScramble = () => setScramble(generateScramble());
 
             const togglePenalty = useCallback((id,type) => {
-                setSolves(prev => {
-                    const updated = prev.map(s => s.id!==id?s:{...s,penalty:s.penalty===type?'':type});
-                    const us = updated.find(s=>s.id===id); const uid=userIdRef.current;
-                    if(uid&&us&&us.timestamp) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:us.timestamp,penalty:us.penalty,userId:uid})}).catch(()=>{});
-                    return updated;
-                });
+                const current = solvesRef.current.find(s => s.id === id);
+                if (!current) return;
+                const newPenalty = current.penalty === type ? '' : type;
+                setSolves(prev => prev.map(s => s.id !== id ? s : {...s, penalty: newPenalty}));
+                const uid = userIdRef.current;
+                if (uid && current.timestamp) fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'updatePenalty',timestamp:current.timestamp,penalty:newPenalty,userId:uid})}).catch(()=>{});
             }, []);
 
             const calcStatValue = useCallback((config,allSolves) => {
@@ -437,7 +454,7 @@
                 if(vt.length===0)return allSolves.length>0?"DNF":"-";
                 if(config.type==='Single'){if(config.result==='Best')return formatTime(Math.min(...vt));if(config.result==='Worst')return formatTime(Math.max(...vt));}
                 else{if(!config.count)return formatTime(vt.reduce((a,b)=>a+b,0)/vt.length);if(config.result==='Current')return calculateAverage(allSolves,config.count);
-                if(config.result==='Best'){let best=Infinity;for(let i=0;i<=allSolves.length-config.count;i++){const a=calculateAverage(allSolves.slice(i,i+config.count),config.count);if(a!=="DNF"&&a!=="-"){const n=parseFloat(a)*1000;if(n<best)best=n;}}return best===Infinity?"-":formatTime(best);}}
+                if(config.result==='Best'){let best=Infinity;for(let i=0;i<=allSolves.length-config.count;i++){const ms=calculateAverageMs(allSolves.slice(i,i+config.count),config.count);if(ms!==null&&ms!==Infinity&&ms<best)best=ms;}return best===Infinity?"-":formatTime(best);}}
                 return"-";
             }, []);
 
