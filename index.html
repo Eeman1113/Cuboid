@@ -187,7 +187,7 @@
                 const solveGrad = ctx.createLinearGradient(0,0,0,h); solveGrad.addColorStop(0,'rgba(36,107,253,0.12)'); solveGrad.addColorStop(0.5,'rgba(36,107,253,0.03)'); solveGrad.addColorStop(1,'rgba(36,107,253,0)');
                 const crosshairPlugin = { id:'crosshair', afterDraw(chart){ const tt=chart.tooltip; if(!tt||!tt.getActiveElements().length)return; const x=tt.getActiveElements()[0].element.x,yA=chart.scales.y,c=chart.ctx; c.save();c.beginPath();c.setLineDash([3,4]);c.moveTo(x,yA.top);c.lineTo(x,yA.bottom);c.lineWidth=1;c.strokeStyle='rgba(255,255,255,0.1)';c.stroke();c.restore(); } };
                 const n = times.length;
-                const dense = n > 50, vdense = n > 100;
+                const dense = n > 150, vdense = n > 150;
                 const pointBg = times.map((_,i) => i===bestIdx?'#22c55e':'#181b25');
                 const pointBorder = times.map((_,i) => i===bestIdx?'#22c55e':'#246bfd');
                 const pointSize = times.map((_,i) => i===bestIdx?(vdense?4:5):(vdense?0:dense?1.5:3));
