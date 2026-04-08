@@ -403,7 +403,7 @@
 
             const deleteFromSheets = useCallback(async (timestamp, uid) => {
                 if(!timestamp||!uid)return;
-                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'delete',timestamp,userId:uid})}); const json=await res.json(); if(json.status!=='success'){setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500);} }
+                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'delete',timestamp,userId:uid})}); const json=await res.json(); if(json.status==='success'){setCloudStatus('deleted');setTimeout(()=>setCloudStatus('idle'),1500);}else{setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500);} }
                 catch(e){ setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500); }
             }, []);
 
@@ -514,7 +514,7 @@
                                 {scrambleMode && <>
                                     <button onClick={()=>setShowArrows(!showArrows)} className={`transition-colors ${showArrows?'text-primary':'hover:text-white'}`} title="Toggle Move Arrows"><NavigationIcon className="w-[18px] h-[18px]" /></button>
                                     <div className="relative group/cloud flex-shrink-0 flex items-center">
-                                        <button onClick={handleManualSync} className={`transition-all cursor-pointer ${syncStatus==='syncing'?'sync-pulse':''}`} style={{ color:syncStatus==='syncing'?'#246bfd':cloudStatus==='success'?'#22c55e':cloudStatus==='error'?'#ef4444':'rgb(107,114,128)', filter:syncStatus==='syncing'?'drop-shadow(0 0 6px #246bfd)':cloudStatus==='success'?'drop-shadow(0 0 6px #22c55e)':cloudStatus==='error'?'drop-shadow(0 0 6px #ef4444)':'none' }} title={userId?'Sync now':'Not synced — do a solve or import'}>
+                                        <button onClick={handleManualSync} className={`transition-all cursor-pointer ${syncStatus==='syncing'?'sync-pulse':''}`} style={{ color:syncStatus==='syncing'?'#246bfd':cloudStatus==='deleted'?'#a855f7':cloudStatus==='success'?'#22c55e':cloudStatus==='error'?'#ef4444':'rgb(107,114,128)', filter:syncStatus==='syncing'?'drop-shadow(0 0 6px #246bfd)':cloudStatus==='deleted'?'drop-shadow(0 0 6px #a855f7)':cloudStatus==='success'?'drop-shadow(0 0 6px #22c55e)':cloudStatus==='error'?'drop-shadow(0 0 6px #ef4444)':'none' }} title={userId?'Sync now':'Not synced — do a solve or import'}>
                                             {userId ? <CloudIcon style={{color:'inherit',filter:'inherit'}}/> : <CloudOffIcon style={{color:'inherit',filter:'inherit'}}/>}
                                         </button>
                                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-[#0c0d17] border border-white/10 rounded-lg text-[10px] font-mono text-gray-400 whitespace-nowrap opacity-0 group-hover/cloud:opacity-100 transition-opacity pointer-events-none shadow-xl">
