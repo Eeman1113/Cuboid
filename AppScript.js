@@ -283,7 +283,7 @@ function doPost(e) {
               String(s.penalty || ''),
               String(s.scramble || ''),
               s.timestamp,
-              new Date(s.timestamp).toISOString()
+              new Date(s.timestamp).toLocaleString()
             ]);
             existingTs[String(s.timestamp)] = true;
           }
@@ -320,7 +320,7 @@ function doPost(e) {
             String(d.penalty || ''),
             String(d.scramble || ''),
             d.timestamp,
-            new Date(d.timestamp).toISOString()
+            new Date(d.timestamp).toLocaleString()
           ]);
         }
       } else {
@@ -330,7 +330,7 @@ function doPost(e) {
           String(payload.penalty || ''),
           String(payload.scramble || ''),
           payload.timestamp,
-          new Date(payload.timestamp).toISOString()
+          new Date(payload.timestamp).toLocaleString()
         ]);
       }
 
