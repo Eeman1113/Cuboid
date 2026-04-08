@@ -433,14 +433,14 @@
             }, [scramble,isLocked,scrambleMode,syncSingleSolve]);
 
             const deleteSolve = useCallback((id) => {
-                let ts = null;
                 setSolves(prev => {
                     const solve = prev.find(s => s.id === id);
-                    if (solve) ts = solve.timestamp;
+                    if (solve && solve.timestamp) {
+                        pendingDeletesRef.current.add(String(solve.timestamp));
+                        deleteFromSheets(solve.timestamp, userIdRef.current);
+                    }
                     return prev.filter(s => s.id !== id);
                 });
-                if (ts) pendingDeletesRef.current.add(String(ts));
-                if (ts) deleteFromSheets(ts, userIdRef.current);
             }, [deleteFromSheets]);
 
             const removeDuplicates = useCallback(() => { setSolves(prev=>{ const sT=new Set(),sF=new Set(); return prev.filter(s=>{ const k=String(s.timestamp),fp=solveFingerprint(s); if((s.timestamp&&sT.has(k))||sF.has(fp))return false; if(s.timestamp)sT.add(k);sF.add(fp);return true; }); }); }, []);
