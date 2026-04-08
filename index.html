@@ -433,10 +433,13 @@
             }, [scramble,isLocked,scrambleMode,syncSingleSolve]);
 
             const deleteSolve = useCallback((id) => {
-                const solve = solvesRef.current.find(s => s.id === id);
-                const ts = solve ? solve.timestamp : null;
+                let ts = null;
+                setSolves(prev => {
+                    const solve = prev.find(s => s.id === id);
+                    if (solve) ts = solve.timestamp;
+                    return prev.filter(s => s.id !== id);
+                });
                 if (ts) pendingDeletesRef.current.add(String(ts));
-                setSolves(prev => prev.filter(s => s.id !== id));
                 if (ts) deleteFromSheets(ts, userIdRef.current);
             }, [deleteFromSheets]);
 
