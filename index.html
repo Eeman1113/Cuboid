@@ -271,7 +271,12 @@
                         const serverData = json.solves, deletedData = json.deleted || [];
                         setSolves(prev => {
                             let merged = mergeSolves(prev, serverData, deletedData);
-                            if (pendingDeletesRef.current.size > 0) merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
+                            if (pendingDeletesRef.current.size > 0) {
+                                merged = merged.filter(s => !pendingDeletesRef.current.has(String(s.timestamp)));
+                                // Only clear pending once server confirms item is gone
+                                const serverTs = new Set(serverData.map(s => String(s.timestamp)));
+                                pendingDeletesRef.current.forEach(ts => { if (!serverTs.has(ts)) pendingDeletesRef.current.delete(ts); });
+                            }
                             return merged;
                         });
                         setSyncStatus('idle'); isSyncingRef.current = false; return;
@@ -398,8 +403,8 @@
 
             const deleteFromSheets = useCallback(async (timestamp, uid) => {
                 if(!timestamp||!uid)return;
-                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'delete',timestamp,userId:uid})}); const json=await res.json(); pendingDeletesRef.current.delete(String(timestamp)); if(json.status!=='success'){setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500);} }
-                catch(e){ pendingDeletesRef.current.delete(String(timestamp)); setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500); }
+                try { const res=await fetch(SHEETS_URL,{method:'POST',body:JSON.stringify({action:'delete',timestamp,userId:uid})}); const json=await res.json(); if(json.status!=='success'){setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500);} }
+                catch(e){ setCloudStatus('error');setTimeout(()=>setCloudStatus('idle'),1500); }
             }, []);
 
             const stopTimer = useCallback(() => {
